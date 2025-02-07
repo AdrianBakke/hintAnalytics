@@ -24,6 +24,41 @@
         .toolbar {
             margin: 10px;
         }
+
+        .thumbnail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .thumbnail-grid img {
+            width: 100%;
+            height: auto;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .thumbnail-grid img.active {
+            border-color: #ff0000;
+        }
+
+        .neighbor-thumbnails {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+
+        .neighbor-thumbnail {
+            width: 100px;
+            height: auto;
+            cursor: pointer;
+        }
+
+        #single-view {
+            display: none;
+        }
     </style>
 </head>
 
@@ -36,6 +71,15 @@
         <label><input type="checkbox" id="ballonly"> show only images with ball</label>
     </div>
     <div id="container"></div>
+    <div id="thumbnail-grid" class="thumbnail-grid"></div>
+    <div id="single-view">
+        <div id="container"></div>
+        <div id="neighbor-thumbnails" class="neighbor-thumbnails"></div>
+        <button onclick="showGridView()">Back to Grid</button>
+    </div>
+    <div style="text-align: center; width: 100%;">
+        <button id="see-more-button" style="margin-top: 20px;">See More</button>
+    </div>
     <script src="static/index.js"></script>
 </body>
 

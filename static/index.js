@@ -1,85 +1,100 @@
 let currentIndex = 0;
 let images = [];
+let displayedImages = 50;
 const container = document.getElementById('container');
-const class_names = ['ball', 'keeper', 'player', 'ref']
-const class_colors = { 'ball': '#ff0000', 'default': '#00ff00' }
+const thumbnailGrid = document.getElementById('thumbnail-grid');
+const singleView = document.getElementById('single-view');
+const seeMoreButton = document.getElementById('see-more-button');
 
 async function loadImages() {
     const res = await fetch('/images');
     images = await res.json();
-    updateImageSelect();
-    loadCurrentImage();
+    createThumbnailGrid();
+    setupSeeMoreButton();
 }
 
-async function loadCurrentImage() {
-    const filename = images[currentIndex];
+function createThumbnailGrid() {
+    const imagesToDisplay = images.slice(0, displayedImages);
+    thumbnailGrid.innerHTML = imagesToDisplay.map((img, index) => `
+        <img src="/image/${img}" 
+             onclick="showSingleView(${index})"
+             class="${index === currentIndex ? 'active' : ''}">
+    `).join('');
+}
 
-    // Load image
-    const img = new Image();
-    img.src = `/image/${filename}`;
-
-    // Load labels
-    const labelRes = await fetch(`/labels/${filename}`);
-    const bboxes = await labelRes.json();
-
-    // Clear container
-    container.innerHTML = '';
-
-    img.onload = () => {
-        // Draw image
-        container.appendChild(img);
-
-        // Draw bounding boxes
-        bboxes.forEach(bbox => {
-            if (document.getElementById('ballonly').checked && bbox.class !== 'ball') return;
-
-            const [x_center, y_center, width, height] = bbox.coordinates;
-            const absWidth = width * img.width;
-            const absHeight = height * img.height;
-            const left = (x_center * img.width) - (absWidth / 2);
-            const top = (y_center * img.height) - (absHeight / 2);
-
-            const box = document.createElement('div');
-            box.className = 'bbox';
-            box.style.left = `${left}px`;
-            box.style.top = `${top}px`;
-            box.style.width = `${absWidth}px`;
-            box.style.height = `${absHeight}px`;
-            box.style.borderColor = class_colors[bbox.class] || class_colors.default;
-
-            const label = document.createElement('div');
-            label.className = 'class-label';
-            label.textContent = bbox.class;
-            label.style.left = `${left}px`;
-            label.style.top = `${top - 20}px`;
-
-            container.appendChild(box);
-            container.appendChild(label);
-        });
+function setupSeeMoreButton() {
+    if (displayedImages < images.length) {
+        seeMoreButton.style.display = 'block';
+        seeMoreButton.onclick = () => {
+            displayedImages += 50;
+            createThumbnailGrid();
+            setupSeeMoreButton();
+        };
+    } else {
+        seeMoreButton.style.display = 'none';
     }
 }
 
-function updateImageSelect() {
-    const select = document.getElementById('imageselect');
-    select.innerHTML = images.map((img, index) =>
-        `<option value="${index}" ${index === currentIndex ? 'selected' : ''}>${img}</option>`
-    ).join('');
-    select.onchange = (e) => {
-        currentIndex = parseInt(e.target.value);
-        loadCurrentImage();
+function showGridView() {
+    thumbnailGrid.style.display = 'grid';
+    singleView.style.display = 'none';
+    createThumbnailGrid();
+}
+
+function showSingleView(index) {
+    currentIndex = index ?? currentIndex;
+    thumbnailGrid.style.display = 'none';
+    singleView.style.display = 'block';
+    updateNeighborThumbnails();
+    loadCurrentImage();
+}
+
+function updateNeighborThumbnails() {
+    const neighborDiv = document.getElementById('neighbor-thumbnails');
+    const imagesToDisplay = images.slice(0, displayedImages);
+    neighborDiv.innerHTML = imagesToDisplay.map((img, index) => `
+        <img src="/image/${img}" 
+             class="neighbor-thumbnail ${index === currentIndex ? 'active' : ''}"
+             onclick="currentIndex=${index}; updateNeighborThumbnails(); loadCurrentImage()">
+    `).join('');
+}
+
+async function loadCurrentImage() {
+    // Fetch the current image based on the currentIndex
+    const currentImageSrc = `/image/${images[currentIndex]}`;
+
+    // Set the src attribute of the single view image element
+    const imageElement = document.createElement('img');
+    imageElement.src = currentImageSrc;
+    imageElement.style.width = "70%";
+    imageElement.style.height = "70%";
+
+    // Clear the single view container and append the new image
+    singleView.innerHTML = '';
+    singleView.appendChild(imageElement);
+
+    // Once the image is loaded, update the active class on the thumbnails
+    imageElement.onload = () => {
+        document.querySelectorAll('.thumbnail-grid img, .neighbor-thumbnail').forEach(el => {
+            el.classList.remove('active');
+        });
+        document.querySelectorAll(`.thumbnail-grid img:nth-child(${currentIndex + 1}),
+                                  .neighbor-thumbnail:nth-child(${currentIndex + 1})`).forEach(el => {
+            el.classList.add('active');
+        });
     };
 }
 
 function nextImage() {
     currentIndex = (currentIndex + 1) % images.length;
     loadCurrentImage();
-    updateImageSelect();
+    updateNeighborThumbnails();
 }
 
 function prevImage() {
     currentIndex = (currentIndex - 1 + images.length) % images.length;
     loadCurrentImage();
-    updateImageSelect();
+    updateNeighborThumbnails();
 }
 
 // Initial load
