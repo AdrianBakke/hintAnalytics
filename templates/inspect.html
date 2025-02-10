@@ -1,9 +1,9 @@
-<!-- templates/index.html -->
+<!-- templates/inspect.html -->
 <!doctype html>
 <html>
 
 <head>
-    <title>yolo bbox viewer</title>
+    <title>Inspect</title>
     <style>
         #container {
             position: relative;
@@ -57,25 +57,24 @@
         }
 
         #single-view {
-            display: none;
+            display: block;
         }
     </style>
 </head>
 
 <body>
-    <h1>yolo bbox viewer</h1>
-    <div class="toolbar">
-        <select id="imageselect"></select>
-        <button onclick="previmage()">previous</button>
-        <button onclick="nextimage()">next</button>
-        <label><input type="checkbox" id="ballonly"> show only images with ball</label>
+    <h1>Inspect</h1>
+    <div id="single-view">
+        <div id="container"></div>
+        <div id="neighbor-thumbnails" class="neighbor-thumbnails"></div>
+        <button onclick="showGridView()">Back to Grid</button>
     </div>
-    <div id="container"></div>
     <div id="thumbnail-grid" class="thumbnail-grid"></div>
-    <div style="text-align: center; width: 100%;">
-        <button id="see-more-button" style="margin-top: 20px;">See More</button>
-    </div>
-    <script src="static/index.js"></script>
+    <script>
+        // Define a global variable
+        const image = {{image | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='inspect.js') }}"></script>
 </body>
 
 </html>
