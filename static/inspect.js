@@ -1,93 +1,66 @@
-function initializeImageView(filename) {
-    const singleView = document.getElementById('single-view');
-    const imageElement = document.createElement('img');
-    imageElement.style.width = "70%";
-    imageElement.style.height = "70%";
-    singleView.innerHTML = '';
-    singleView.appendChild(imageElement);
+const container = document.getElementById('container');
+const img = document.getElementById('image-view');
+const canvas = document.getElementById('overlay');
+const toggleButton = document.getElementById('toggle-button');
+const ctx = canvas.getContext('2d');
 
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Show Labeled Image';
-    document.body.appendChild(toggleButton);
+// Set up toggle button properties and append to body
+toggleButton.textContent = 'Show Labeled Image';
 
-    let isLabeledImageShown = false;
+img.src = `/image/${image}`;
 
-    // Original image URL
-    const originalImageSrc = `/image/${filename}`; // Replace with actual path
+// Toggle state
+let isLabeledImageShown = false;
 
-    // Labeled image URL
-    const labeledImageSrc = `/draw_labels/${filename}`;
+const classColors = {
+    'ball': '#ff0000',
+    'default': '#00ff00'
+};
+//
+// Function to draw bounding boxes on canvas
+function drawBoxes(labels) {
+    labels.forEach(label => {
+        const [cx, cy, w, h] = label.coordinates;
+        const color = classColors[label.class] || classColors.default;
 
-    // Initially display the original image
-    imageElement.src = originalImageSrc;
+        // Convert normalized coordinates to pixels
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
 
-    toggleButton.addEventListener('click', () => {
-        if (isLabeledImageShown) {
-            // Show original image
-            imageElement.src = originalImageSrc;
-            toggleButton.textContent = 'Show Labeled Image';
-        } else {
-            // Fetch and show labeled image
-            fetch(labeledImageSrc)
-                .then(response => response.blob())
-                .then(blob => {
-                    const labeledImageURL = URL.createObjectURL(blob);
-                    imageElement.src = labeledImageURL;
-                });
+        const x = (cx - w / 2) * imgWidth;
+        const y = (cy - h / 2) * imgHeight;
+        const width = w * imgWidth;
+        const height = h * imgHeight;
 
-            toggleButton.textContent = 'Show Original Image';
-        }
-
-        isLabeledImageShown = !isLabeledImageShown;
+        // Draw rectangle
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
     });
 }
 
-function drawLabelsOnImage(imageElement, labels) {
-    // Create a canvas element to overlay labels
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+// Event listener for toggle button
+toggleButton.addEventListener('click', () => {
+    if (isLabeledImageShown) {
+        // Show original image and clear canvas
+        img.src = `/image/${image}`;
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+        toggleButton.textContent = 'Show Labeled Image';
+    } else {
+        // Fetch and show labeled image
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
 
-    // Set canvas dimensions to the image dimensions
-    canvas.width = imageElement.width;
-    canvas.height = imageElement.height;
+        fetch(`/labels/${image}`)
+            .then(res => res.json())
+            .then(labels => drawBoxes(labels))
+            .catch(console.error);
 
-    // Load the image onto the canvas
-    const img = new Image();
-    img.src = imageElement.src;
-    img.onload = () => {
-        // Draw the image on the canvas
-        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        toggleButton.textContent = 'Show Original Image';
+    }
 
-        // Draw labels on the canvas
-        labels.forEach(label => {
-            const { class: className, coordinates } = label;
-            const [centerX, centerY, width, height] = coordinates;
+    isLabeledImageShown = !isLabeledImageShown;
+});
+// Class colors mapping
 
-            // Scale coordinates based on image size
-            const canvasCenterX = centerX * canvas.width;
-            const canvasCenterY = centerY * canvas.height;
-            const canvasWidth = width * canvas.width;
-            const canvasHeight = height * canvas.height;
 
-            // Calculate top-left corner from center coordinates
-            const canvasX = canvasCenterX - canvasWidth / 2;
-            const canvasY = canvasCenterY - canvasHeight / 2;
-
-            // Draw rectangle for the label
-            context.strokeStyle = 'red';
-            context.lineWidth = 2;
-            context.strokeRect(canvasX, canvasY, canvasWidth, canvasHeight);
-
-            // Draw label text
-            context.fillStyle = 'red';
-            context.font = '14px Arial';
-            context.fillText(className, canvasX, canvasY - 5);
-        });
-
-        // Replace image with canvas in the DOM
-        imageElement.parentNode.replaceChild(canvas, imageElement);
-    };
-}
-
-// Call the function with the desired image
-initializeImageView(image); // Replace 'your_image_name_here' with the actual image name
