@@ -5,46 +5,50 @@
 <head>
     <title>Inspect</title>
     <style>
+        /* Ensure container is relatively positioned */
         #container {
             position: relative;
+            display: inline-block;
+            /* Shrink to fit content */
         }
 
-        #image-view,
+        /* Use relative positioning for the image and canvas */
+        #image-view {
+            position: relative;
+            display: block;
+            /* Ensure block-level elements for proper stacking */
+        }
+
         #overlay {
             position: absolute;
             top: 0;
             left: 0;
         }
 
-        #image-view {
-            z-index: 1;
-        }
-
-        #overlay {
-            z-index: 2;
-        }
-
-        #toggle-button {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            /* Optional: Add some styling to the button */
-            background-color: #f0f0f0;
+        /* Style for the button container */
+        .button-container {
+            display: flex;
+            gap: 10px;
             padding: 10px;
-            text-align: center;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+            /* Ensure buttons are above other elements */
         }
     </style>
 </head>
 
 <body>
     <h1>Inspect</h1>
+    <div class="button-container">
+        <button id="toggle-button" class="canvas-button">Toggle</button>
+        <button id="draw-button" class="canvas-button">Draw</button>
+        <button id="select-button" class="canvas-button">Select</button>
+    </div>
     <div id="container">
         <img id="image-view">
         <canvas id="overlay"></canvas>
     </div>
     <div id="thumbnail-grid" class="thumbnail-grid"></div>
-    <div id="toggle-button"></div>
     <script>
         // Define a global variable
         const image = {{image | tojson }};

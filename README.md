@@ -10,8 +10,17 @@ what i want:
 
 plan:
 * i don`t think this should be to much work: setup a webinterface, find a good solution for how to structure the data and how to show it
-* keep as simple as possible with neat UI
+* keep as simple as possible with very simple UI
 
 TODO:
 * create view for images with labels/predictions
 * create training loss overview
+* search for image
+* run model on current image and display results
+* create a sqlite db with image paths, labels for image, ?prediction?
+* add file with path to data and insert all paths to db, then we make thumbnails for different datasources for easy navigation
+
+
+to run:
+
+`bash python server.js`
