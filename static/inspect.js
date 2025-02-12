@@ -1,31 +1,30 @@
-/* TODO
- * create run model button
- * regret box created with ctrl z
- * keyboard shortcut for each of the buttons
- * needs a way to choose class for box
- */
-
 const elements = {
     container: document.getElementById('container'),
     img: document.getElementById('image-view'),
     canvas: document.getElementById('overlay'),
     toggleButton: document.getElementById('toggle-button'),
     drawButton: document.getElementById('draw-button'),
-    selectButton: document.getElementById('select-button')
+    selectButton: document.getElementById('select-button'),
+    runModelButton: document.getElementById('run-model-button'), // New button for running the model
+    classSelect: document.getElementById('class-select') // Dropdown or other element for class selection
 };
 
 const ctx = elements.canvas.getContext('2d');
 
 // Initial setup
 elements.img.src = `/image/${image}`;
-elements.canvas.width = elements.img.naturalWidth;
-elements.canvas.height = elements.img.naturalHeight;
+elements.img.onload = () => {
+    elements.canvas.width = elements.img.naturalWidth;
+    elements.canvas.height = elements.img.naturalHeight;
+};
 let isLabeledImageShown = false;
 let isDrawingMode = false;
+let isFetchedLabels = false;
 let selectedBoxIndex = null;
-const classColors = { 'ball': '#ff0000', 'default': '#00ff00' };
-var fetchedLabels = [];
+const classColors = { '0': '#ff0000', 'default': '#00ff00' };
+let labels = [];
 
+// Function to update button styles visually
 function updateButtonStyles() {
     // Toggle button style
     elements.toggleButton.style.backgroundColor = isLabeledImageShown ? '#cccccc' : '#ffffff';
@@ -40,7 +39,7 @@ function updateButtonStyles() {
 // Function to draw bounding boxes
 function drawBoxes() {
     ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-    fetchedLabels.forEach((label, index) => {
+    labels.forEach((label, index) => {
         const [cx, cy, w, h] = label.coordinates;
         const color = index === selectedBoxIndex ? '#0000ff' : (classColors[label.class] || classColors.default);
         const { width, height } = elements.canvas;
@@ -52,22 +51,32 @@ function drawBoxes() {
 
 // Event listeners for buttons
 elements.toggleButton.addEventListener('click', () => {
-    if (isLabeledImageShown) {
-        elements.img.src = `/image/${image}`;
-        fetchedLabels = [];
-        drawBoxes(); // Redraw without labels
-    } else {
-        fetch(`/labels/${image}`)
-            .then(res => res.json())
-            .then(labels => {
-                fetchedLabels.splice(0, fetchedLabels.length, ...labels);
-                drawBoxes();
-            })
-            .catch(console.error);
-    }
     isLabeledImageShown = !isLabeledImageShown;
+
+    if (isLabeledImageShown) {
+        if (!isFetchedLabels) {
+            fetch(`/labels/${image}`)
+                .then(res => res.json())
+                .then(fetchedLabels => {
+                    // Ensure `labels` is an array
+                    labels = labels.concat(JSON.parse(fetchedLabels))
+                    drawBoxes();
+                })
+                .catch(console.error);
+            isFetchedLabels = true;
+        } else {
+            drawBoxes();
+        }
+    } else {
+        elements.img.src = `/image/${image}`;
+        showLabels = [];
+        drawBoxes(); // Redraw without labels
+    }
+
     updateButtonStyles(); // Update styles after toggling
 });
+
+
 
 elements.drawButton.addEventListener('click', () => {
     isDrawingMode = !isDrawingMode;
@@ -81,13 +90,18 @@ elements.selectButton.addEventListener('click', () => {
     updateButtonStyles(); // Update styles after toggling
 });
 
+//elements.runModelButton.addEventListener('click', () => {
+//    // Add function to run the model when button is clicked
+//    console.log("Running model...");
+//});
+
 // Function to handle keyboard shortcuts
 function handleShortcuts(e) {
     if (e.ctrlKey || e.metaKey) {
         if (e.key === 'z') {
             // Ctrl+Z or Cmd+Z pressed
             if (selectedBoxIndex !== null) {
-                fetchedLabels.splice(selectedBoxIndex, 1); // Remove selected box
+                labels.splice(selectedBoxIndex, 1); // Remove selected box
                 selectedBoxIndex = null; // Clear selection
                 drawBoxes();
             }
@@ -120,7 +134,7 @@ elements.canvas.addEventListener('mousedown', (e) => {
         startY = y;
         isDrawing = true;
     } else {
-        selectedBoxIndex = fetchedLabels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
+        selectedBoxIndex = labels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
             const [bx, by, bw, bh] = [(cx - w / 2) * elements.canvas.width, (cy - h / 2) * elements.canvas.height, w * elements.canvas.width, h * elements.canvas.height];
             return x >= bx && x <= bx + bw && y >= by && y <= by + bh;
         });
@@ -153,8 +167,9 @@ function saveBoxCoordinates(x, y, width, height) {
     const cy = (y + height / 2) / imgHeight;
     const w = width / imgWidth;
     const h = height / imgHeight;
-    fetchedLabels.push({ class: 'new', coordinates: [cx, cy, w, h] });
+    const selectedClass = 'new'; //elements.classSelect.value || Get selected class from dropdown
+    labels.push({ class: selectedClass, coordinates: [cx, cy, w, h] });
     drawBoxes();
-    console.log({ cx, cy, w, h });
+    console.log({ class: selectedClass, cx, cy, w, h });
 }
 

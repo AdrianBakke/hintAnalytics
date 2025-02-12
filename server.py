@@ -96,6 +96,8 @@ def get_labels(filename):
         return jsonify([])
 
     labels = json.loads(result['labels'])
+    print(labels)
+    print(type(jsonify(labels)), jsonify(labels))
     return jsonify(labels)
 
 if __name__ == '__main__':

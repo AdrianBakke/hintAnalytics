@@ -11,14 +11,11 @@ def convert_label_to_json(label_path):
         parts = line.strip().split()
         label_dict = {
             "class": int(parts[0]),
-            "x_center": float(parts[1]),
-            "y_center": float(parts[2]),
-            "width": float(parts[3]),
-            "height": float(parts[4])
+            "coordinates": [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])]
         }
         label_list.append(label_dict)
 
-    label_json = json.dumps(label_list, indent=4)
+    label_json = json.dumps(label_list)
     return label_json
 
 def create_db(db_name='images.db'):
@@ -87,5 +84,10 @@ def update_db_with_labels(label_path, db_name='images.db'):
 # Example usage
 if __name__ == "__main__":
     create_db()
-    populate_db_with_images('your_input_path')
-    update_db_with_labels('your_input_path')
+    with open("paths.txt", "r") as f:
+        f = f.read().splitlines()
+        for c,path in enumerate(f, 1):
+            if c%2==0:
+                update_db_with_labels(path)
+            else:
+                populate_db_with_images(path)
