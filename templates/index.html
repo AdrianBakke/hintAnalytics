@@ -1,19 +1,21 @@
-<!-- templates/index.html -->
 <!doctype html>
 <html>
 
 <head>
-    <title>yolo bbox viewer</title>
+    <title>YOLO BBox Viewer - Collections</title>
     <style>
+        /* Style for the container */
         #container {
             position: relative;
         }
 
+        /* Style for bounding boxes */
         .bbox {
             position: absolute;
             border: 2px solid;
         }
 
+        /* Style for class labels */
         .class-label {
             position: absolute;
             background: rgba(0, 0, 0, 0.7);
@@ -21,10 +23,20 @@
             padding: 2px;
         }
 
+        /* Style for the toolbar */
         .toolbar {
             margin: 10px;
         }
 
+        /* Grid style for collections */
+        .collection-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            padding: 10px;
+        }
+
+        /* Grid style for thumbnails */
         .thumbnail-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -32,17 +44,21 @@
             padding: 10px;
         }
 
-        .thumbnail-grid img {
+        /* Style for images within grids */
+        .thumbnail-grid img,
+        .collection-grid img {
             width: 100%;
             height: auto;
             cursor: pointer;
             border: 2px solid transparent;
         }
 
-        .thumbnail-grid img.active {
+        /* Active state for images */
+        .active {
             border-color: #ff0000;
         }
 
+        /* Style for neighbor thumbnails */
         .neighbor-thumbnails {
             display: flex;
             gap: 10px;
@@ -50,12 +66,14 @@
             overflow-x: auto;
         }
 
+        /* Style for neighbor thumbnails */
         .neighbor-thumbnail {
             width: 100px;
             height: auto;
             cursor: pointer;
         }
 
+        /* Initially hide the single view */
         #single-view {
             display: none;
         }
@@ -63,14 +81,8 @@
 </head>
 
 <body>
-    <h1>yolo bbox viewer</h1>
-    <div class="toolbar">
-        <select id="imageselect"></select>
-        <button onclick="previmage()">previous</button>
-        <button onclick="nextimage()">next</button>
-        <label><input type="checkbox" id="ballonly"> show only images with ball</label>
-    </div>
-    <div id="container"></div>
+    <h1>YOLO BBox Viewer</h1>
+    <div id="collection-grid" class="collection-grid"></div>
     <div id="thumbnail-grid" class="thumbnail-grid"></div>
     <div style="text-align: center; width: 100%;">
         <button id="see-more-button" style="margin-top: 20px;">See More</button>

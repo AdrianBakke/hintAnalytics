@@ -1,110 +1,102 @@
-from flask import Flask, render_template, send_file, jsonify
 import os
 import json
+import sqlite3
 from pathlib import Path
 from PIL import Image, ImageDraw
+from flask import Flask, render_template, send_file, jsonify
+
+'''
+- `get_db_connection()` establishes a connection with the SQLite database.
+- `init_db()` creates the necessary tables (`root_dirs` and `images`) if they don't exist.
+- `/image_collections` endpoint returns all image collections from the `root_dirs` table.
+- `/images/<int:collection_id>` lists images belonging to a specified collection.
+- `/image/<path:filename>` retrieves the image file path from the database and serves the image.
+- The application is initialized with `init_db()` to ensure tables are set up before the server runs.
+#     CREATE TABLE IF NOT EXISTS root_dirs (
+#         id INTEGER PRIMARY KEY AUTOINCREMENT,
+#         root_dir TEXT NOT NULL
+
+#     CREATE TABLE IF NOT EXISTS images (
+#         id INTEGER PRIMARY KEY AUTOINCREMENT,
+#         root_dir_id INTEGER,
+#         image_full TEXT NOT NULL,
+#         image_name TEXT NOT NULL,
+#         labels JSON,
+#         FOREIGN KEY (root_dir_id) REFERENCES root_dirs(id)
+#
+'''
 
 app = Flask(__name__)
 
-# configuration
-images_dir = '/home/newton/repo/Football-Analysis-using-YOLO/data/football-players-detection-1/data/train/images'
-labels_dir = '/home/newton/repo/Football-Analysis-using-YOLO/data/football-players-detection-1/data/train/labels'
-class_names = ['ball', 'keeper', 'player', 'ref']
-class_colors = {'ball': '#ff0000', 'default': '#00ff00'}  # red for ball, green for others
+def get_db_connection():
+    conn = sqlite3.connect('images.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/inspect/<image>')
-def insepct(image):
+def inspect(image):
     return render_template('inspect.html', image=image)
 
-@app.route('/images')
-def list_images():
-    images = [f for f in os.listdir(images_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-    return jsonify(images)
+@app.route('/image_collections')
+@app.route('/image_collections')
+def get_image_collections():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM root_dirs')
+    collections = cursor.fetchall()
+
+    # Add cover_image to each collection
+    res = [dict(row) for row in collections] 
+    for row in res:
+        collection_id = row['id']
+        cursor.execute('SELECT image_name FROM images WHERE root_dir_id = ? LIMIT 1', (collection_id,))
+        path = cursor.fetchone()
+        if id:
+            row['cover_image'] = path[0]
+        else:
+            raise LookupError(f"could not find any images in root_dir with id {collection_id}")
+
+    conn.close()
+    return jsonify(res)
+
+@app.route('/images/<int:collection_id>')
+def list_images(collection_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT image_name FROM images WHERE root_dir_id = ?', (collection_id,))
+    images = cursor.fetchall()
+    conn.close()
+    return jsonify([row['image_name'] for row in images])
 
 @app.route('/image/<path:filename>')
-def get_image(filename) :
-    path = os.path.join(images_dir, filename)
-    assert os.path.exists(path), f"could not find {path}"
+def get_image(filename):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT image_full FROM images WHERE image_name = ?', (filename,))
+    result = cursor.fetchone()
+    if not result:
+        return "Image not found", 404
 
-    return send_file(os.path.join(images_dir, filename))
+    image_full_path = result['image_full']
+    assert os.path.exists(image_full_path), f"could not find {image_full_path}"
+
+    return send_file(image_full_path)
 
 @app.route('/labels/<path:filename>')
 def get_labels(filename):
-    label_path = os.path.join(labels_dir, os.path.splitext(filename)[0] + '.txt')
-    if not os.path.exists(label_path):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT labels FROM images WHERE image_name = ?', (filename,))
+    result = cursor.fetchone()
+    if not result or not result['labels']:
         return jsonify([])
 
-    with open(label_path, 'r') as f:
-        labels = [line.strip().split() for line in f.readlines()]
-
-    formatted = []
-    for label in labels:
-        class_id = int(label[0])
-        formatted.append({
-            'class': class_names[class_id],
-            'coordinates': [float(x) for x in label[1:]]
-        })
-    return jsonify(formatted)
-
-@app.route('/draw_labels/<path:filename>')
-def draw_labels(filename):
-    # Load the image
-    image_path = os.path.join(images_dir, filename)
-    if not os.path.exists(image_path):
-        return "Image not found", 404
-
-    image = Image.open(image_path)
-    draw = ImageDraw.Draw(image)
-    
-
-    # Load labels
-    label_path = os.path.join(labels_dir, os.path.splitext(filename)[0] + '.txt')
-    if not os.path.exists(label_path):
-        return send_file(image_path)  # return the original image if no labels
-
-    with open(label_path, 'r') as f:
-        labels = [line.strip().split() for line in f.readlines()]
-
-    # Draw bounding boxes on the image
-    for label in labels:
-        class_id = int(label[0])
-        coords = [float(x) for x in label[1:]]
-
-        # Assuming the coordinates are in the format [center_x, center_y, width, height] (normalized)
-        img_width, img_height = image.size
-        center_x, center_y, width, height = coords
-        center_x *= img_width
-        center_y *= img_height
-        width *= img_width
-        height *= img_height
-
-        # Calculate box corners
-        top_left_x = center_x - width / 2
-        top_left_y = center_y - height / 2
-        bottom_right_x = center_x + width / 2
-        bottom_right_y = center_y + height / 2
-
-        # Get color for the class
-        color = class_colors.get(class_names[class_id], class_colors['default'])
-
-        # Draw rectangle
-        draw.rectangle([top_left_x, top_left_y, bottom_right_x, bottom_right_y], outline=color, width=2)
-
-    # Instead of saving the image to a file, you can send it directly from memory
-    # This avoids unnecessary file I/O and potential race conditions with concurrent requests
-    from io import BytesIO
-    img_io = BytesIO()
-    image.save(img_io, 'PNG')
-    img_io.seek(0)
-
-    return send_file(img_io, mimetype='image/png')
-
+    labels = json.loads(result['labels'])
+    return jsonify(labels)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
-
-

@@ -1,0 +1,54 @@
+** server.py **
+# Flask application for visualizing labeled football player images.
+
+# Configuration:
+# - Directories for images and labels.
+# - Class names and colors for annotations.
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Route to render the index page
+@app.route('/')
+def index():
+    pass
+
+# Route to render a page to inspect a specific image
+@app.route('/inspect/<image>')
+def inspect(image):
+    pass
+
+# Route to list all image files in the images directory
+@app.route('/images')
+def list_images():
+    pass
+
+# Route to serve a specific image file
+@app.route('/image/<path:filename>')
+def get_image(filename):
+    pass
+
+# Route to provide label data for an image
+@app.route('/labels/<path:filename>')
+def get_labels(filename):
+    pass
+
+# Route to draw bounding boxes on an image using label data and serve it
+@app.route('/draw_labels/<path:filename>')
+def draw_labels(filename):
+    pass
+
+# Run app on port 8000 in debug mode
+if __name__ == '__main__':
+    app.run(debug=True, port=8000)
+```
+
+- **Label Format**:
+  - Labels are assumed to be in text files with normalized coordinates in `[center_x, center_y, width, height]` format.
+  - Class IDs map to predefined class names.
+
+- **Image Processing**:
+  - Uses PIL to draw bounding boxes with specified colors.
+  - Serves processed images directly from memory.
+
+
