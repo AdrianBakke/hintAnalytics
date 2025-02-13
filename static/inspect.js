@@ -17,12 +17,35 @@ elements.img.onload = () => {
     elements.canvas.width = elements.img.naturalWidth;
     elements.canvas.height = elements.img.naturalHeight;
 };
+let changeBuffer = [];
+let currentStateIndex = -1;
+
 let isLabeledImageShown = false;
 let isDrawingMode = false;
 let isFetchedLabels = false;
+
 let selectedBoxIndex = null;
 const classColors = { '0': '#ff0000', 'default': '#00ff00' };
 let labels = [];
+
+function saveState() {
+    // Prune buffer to the current state if we've undone some actions
+    if (currentStateIndex < changeBuffer.length - 1) {
+        changeBuffer = changeBuffer.slice(0, currentStateIndex + 1);
+    }
+    // Save a deep copy of the current labels state
+    changeBuffer.push(JSON.parse(JSON.stringify(labels)));
+    currentStateIndex++;
+}
+
+// Function to undo the last action
+function undoLastAction() {
+    if (currentStateIndex > 0) {
+        currentStateIndex--;
+        labels = JSON.parse(JSON.stringify(changeBuffer[currentStateIndex]));
+        drawBoxes();
+    }
+}
 
 // Function to update button styles visually
 function updateButtonStyles() {
@@ -35,6 +58,7 @@ function updateButtonStyles() {
     // Select button style
     elements.selectButton.style.backgroundColor = !isDrawingMode ? '#cccccc' : '#ffffff';
 }
+
 
 // Function to draw bounding boxes
 function drawBoxes() {
@@ -60,6 +84,7 @@ elements.toggleButton.addEventListener('click', () => {
                 .then(fetchedLabels => {
                     // Ensure `labels` is an array
                     labels = labels.concat(JSON.parse(fetchedLabels))
+                    saveState();
                     drawBoxes();
                 })
                 .catch(console.error);
@@ -95,29 +120,29 @@ elements.selectButton.addEventListener('click', () => {
 //    console.log("Running model...");
 //});
 
-// Function to handle keyboard shortcuts
-function handleShortcuts(e) {
-    if (e.ctrlKey || e.metaKey) {
-        if (e.key === 'z') {
-            // Ctrl+Z or Cmd+Z pressed
-            if (selectedBoxIndex !== null) {
-                labels.splice(selectedBoxIndex, 1); // Remove selected box
-                selectedBoxIndex = null; // Clear selection
-                drawBoxes();
-            }
-        }
-    }
-}
 
 document.addEventListener('keydown', (e) => {
-    handleShortcuts(e); // Handle shortcuts for deleting boxes
-    if (e.key === 'd') {
-        elements.drawButton.click(); // Shortcut for draw button
-    } else if (e.key === 't') {
-        elements.toggleButton.click(); // Shortcut for toggle button
-    } else if (e.key === 's') {
-        elements.selectButton.click(); // Shortcut for select button
+    if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z') {
+            // Ctrl+Z or Cmd+Z pressed for undo
+            undoLastAction();
+        }
+    } else {
+        if (e.key === 'x' && selectedBoxIndex !== null) {
+            // 'x' pressed to delete the selected box
+            labels.splice(selectedBoxIndex, 1);
+            selectedBoxIndex = null;
+            drawBoxes();
+            saveState(); // Save state after deletion
+        } else if (e.key === 'd') {
+            elements.drawButton.click(); // Shortcut for draw button
+        } else if (e.key === 't') {
+            elements.toggleButton.click(); // Shortcut for toggle button
+        } else if (e.key === 's') {
+            elements.selectButton.click(); // Shortcut for select button
+        }
     }
+
     updateButtonStyles(); // Update styles on key press
 });
 
@@ -160,7 +185,6 @@ elements.canvas.addEventListener('mouseup', (e) => {
     isDrawing = false;
 });
 
-// Function to save new box coordinates
 function saveBoxCoordinates(x, y, width, height) {
     const { width: imgWidth, height: imgHeight } = elements.canvas;
     const cx = (x + width / 2) / imgWidth;
@@ -171,5 +195,9 @@ function saveBoxCoordinates(x, y, width, height) {
     labels.push({ class: selectedClass, coordinates: [cx, cy, w, h] });
     drawBoxes();
     console.log({ class: selectedClass, cx, cy, w, h });
+
+    saveState(); // Save state after a new box is added
 }
+
+updateButtonStyles()
 
