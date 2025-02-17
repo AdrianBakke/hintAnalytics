@@ -63,9 +63,9 @@ def populate_db_with_images(image_path, db_name='images.db'):
                 image_full = os.path.join(root, file)
                 image_name = file.rsplit('.', 1)[0]
                 cursor.execute('''
-                    INSERT OR IGNORE INTO images (root_dir_id, image_full, image_name, labels) 
-                    VALUES (?, ?, ?, ?)
-                ''', (root_dir_id, image_full, image_name, json.dumps({})))
+                    INSERT OR IGNORE INTO images (root_dir_id, image_full, image_name) 
+                    VALUES (?, ?, ?)
+                ''', (root_dir_id, image_full, image_name))
     conn.commit()
     conn.close()
 
@@ -97,3 +97,12 @@ if __name__ == "__main__":
                 update_db_with_labels(p)
             elif t=="D":
                 populate_db_with_images(p)
+
+    conn = sqlite3.connect("images.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE root_dirs 
+        SET label_classes = "ball goalkeeper player referee" 
+    ''')
+    conn.commit()
+    conn.close()

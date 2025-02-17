@@ -24,7 +24,6 @@ def inspect(image):
     return render_template('inspect.html', image=image)
 
 @app.route('/image_collections')
-@app.route('/image_collections')
 def get_image_collections():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -63,8 +62,9 @@ def get_image(filename):
     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
     return send_file(image_full_path)
 
+
 @app.route('/label_classes/<path:filename>')
-def get_labels(filename):
+def get_label_classes(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
@@ -74,39 +74,48 @@ def get_labels(filename):
         WHERE i.image_name = ?
     ''', (filename,))
     result = cursor.fetchone()
-    print(result['label_classes'])
     if not result or not result['label_classes']:
         return jsonify({})
     label_classes = {k:c for c,k in enumerate(result['label_classes'].split(" "))}
     return jsonify(label_classes)
 
+@app.route('/labels/<path:filename>')
+def get_labels(filename):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT labels FROM images WHERE image_name = ?', (filename,))
+    result = cursor.fetchone()
+    if not result or not result['labels']:
+        return jsonify([])
+    labels = json.loads(result['labels'])
+    return jsonify(labels)
+
+
 
 @app.route('/update_labels', methods=['POST'])
 def add_labels():
-    # Parse JSON data from the request
     data = request.get_json()
-
-    # Ensure the JSON data contains both 'filename' and 'labels' keys
     if not isinstance(data, dict) or 'filename' not in data or 'labels' not in data:
         return "Invalid input data", 400
-
     filename = data['filename']
     labels = data['labels']
-
-    # Ensure 'labels' is a list or dict that can be converted to JSON
     if not isinstance(labels, (list, dict)):
         return "Invalid label data", 400
-
     conn = get_db_connection()
     cursor = conn.cursor()
-
-    # Update the labels in the database for the given image
     cursor.execute('UPDATE images SET labels = ? WHERE image_name = ?', (json.dumps(labels), filename))
     conn.commit()
     conn.close()
-    print(f'updated labels on image {filename}')
-
     return jsonify({"status": "success", "message": "Labels added successfully"})
+
+@app.route('/delete_labels/<path:filename>')
+def delete_labels(filename):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE images SET labels = ? WHERE image_name = ?', (json.dumps([]), filename))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": "Labels removed successfully"})
 
 @app.route('/predict/<path:filename>')
 def predict_image(filename):

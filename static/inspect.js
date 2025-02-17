@@ -25,32 +25,32 @@ let isDrawingMode = false;
 let isFetchedLabels = false;
 let isPredictDone = false
 
+let selectedClass = null;
 let selectedBoxIndex = null;
 let classColors = {}
+let classNames = {}
 let labels = [];
 
 fetch(`/label_classes/${image}`)
     .then(res => res.json())
     .then(classes => {
-        console.log(classes)
-        // Update class colors and UI
         Object.entries(classes).forEach(([label, index]) => {
-            console.log(label, index)
-            classColors[label] = `hsl(${(index * 137.5) % 360}, 100%, 50%)`; // Generate distinct colors
+            classColors[index] = `hsl(${(index * 137.5) % 360}, 100%, 50%)`; // Generate distinct colors
+            classNames[index] = label
             const option = document.createElement('option');
-            option.value = label;
+            option.value = index;
             option.textContent = label;
             elements.classSelect.appendChild(option);
         }, classColors);
     })
     .catch(console.error);
 
-
 function updateLabels() {
     const data = {
         filename: image, // Assuming `image` variable holds the current image filename
         labels: labels   // Current state of labels to be saved
     };
+    console.log(data)
     fetch('/update_labels', {
         method: 'POST',
         headers: {
@@ -79,7 +79,7 @@ function saveState() {
         changeBuffer = changeBuffer.slice(0, currentStateIndex + 1);
     }
     // Save a deep copy of the current labels state
-    changeBuffer.push(JSON.parse(JSON.stringify(labels)));
+    changeBuffer.push(labels);
     currentStateIndex++;
     updateLabels(); // Update labels on the server after saving state
 }
@@ -106,7 +106,7 @@ function drawBoxes() {
     ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
     labels.forEach((label, index) => {
         const [cx, cy, w, h] = label.coordinates;
-        const color = index === selectedBoxIndex ? '#0000ff' : (classColors[label.class] || classColors.default);
+        const color = index === selectedBoxIndex ? '#0000ff' : classColors[label.class];
         const { width, height } = elements.canvas;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
@@ -123,7 +123,7 @@ function updateClassLegend() {
         const legendItem = document.createElement('div');
         legendItem.style.display = 'flex';
         legendItem.style.alignItems = 'center';
-        legendItem.innerHTML = `<div style="width: 20px; height: 20px; background-color: ${color}; margin-right: 5px;"></div> ${label}`;
+        legendItem.innerHTML = `<div style="width: 20px; height: 20px; background-color: ${color}; margin-right: 5px;"></div> ${classNames[label]}`;
         legendContainer.appendChild(legendItem);
     });
 }
@@ -156,8 +156,6 @@ elements.toggleButton.addEventListener('click', () => {
     updateButtonStyles(); // Update styles after toggling
 });
 
-
-
 elements.drawButton.addEventListener('click', () => {
     isDrawingMode = !isDrawingMode;
     selectedBoxIndex = null; // Deselect any selected box
@@ -170,14 +168,17 @@ elements.selectButton.addEventListener('click', () => {
     updateButtonStyles(); // Update styles after toggling
 });
 
+elements.classSelect.addEventListener('change', (event) => {
+    selectedClass = event.target.value; // Set the selected class to the value of the selected option
+    console.log(`Selected class: ${selectedClass}`); // Optional: Log the selected class for debugging
+});
+
 elements.runModelButton.addEventListener('click', () => {
     if (!isPredictDone) {
         isPredictDone = true
         fetch(`/predict/${image}`)
             .then(res => res.json())
             .then(predictions => {
-                console.log(predictions)
-                // Ensure `labels` is an array
                 labels = labels.concat(predictions)
                 saveState();
                 drawBoxes();
@@ -237,7 +238,7 @@ elements.canvas.addEventListener('mousemove', (e) => {
     const rect = elements.canvas.getBoundingClientRect();
     const [currentX, currentY] = [e.clientX - rect.left, e.clientY - rect.top];
     drawBoxes();
-    ctx.strokeStyle = '#0000ff';
+    ctx.strokeStyle = classColors[selectedClass]
     ctx.lineWidth = 2;
     ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
 });
@@ -256,13 +257,11 @@ function saveBoxCoordinates(x, y, width, height) {
     const cy = (y + height / 2) / imgHeight;
     const w = width / imgWidth;
     const h = height / imgHeight;
-    const selectedClass = elements.classSelect.value; // Get selected class from dropdown
+    const selectedClass = Number(elements.classSelect.value); // Get selected class from dropdown
     labels.push({ class: selectedClass, coordinates: [cx, cy, w, h] });
     drawBoxes();
     console.log({ class: selectedClass, cx, cy, w, h });
-
     saveState(); // Save state after a new box is added
 }
-
 
 updateButtonStyles()
