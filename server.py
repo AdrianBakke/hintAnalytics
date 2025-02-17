@@ -1,30 +1,12 @@
 import os
+import re
 import json
 import sqlite3
 from pathlib import Path
 from PIL import Image, ImageDraw
-from flask import Flask, render_template, send_file, jsonify
+from flask import Flask, render_template, request, send_file, jsonify, Response, abort
+from ultralytics import YOLO
 
-'''
-- `get_db_connection()` establishes a connection with the SQLite database.
-- `init_db()` creates the necessary tables (`root_dirs` and `images`) if they don't exist.
-- `/image_collections` endpoint returns all image collections from the `root_dirs` table.
-- `/images/<int:collection_id>` lists images belonging to a specified collection.
-- `/image/<path:filename>` retrieves the image file path from the database and serves the image.
-- The application is initialized with `init_db()` to ensure tables are set up before the server runs.
-#     CREATE TABLE IF NOT EXISTS root_dirs (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT,
-#         root_dir TEXT NOT NULL
-
-#     CREATE TABLE IF NOT EXISTS images (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT,
-#         root_dir_id INTEGER,
-#         image_full TEXT NOT NULL,
-#         image_name TEXT NOT NULL,
-#         labels JSON,
-#         FOREIGN KEY (root_dir_id) REFERENCES root_dirs(id)
-#
-'''
 
 app = Flask(__name__)
 
@@ -55,11 +37,8 @@ def get_image_collections():
         collection_id = row['id']
         cursor.execute('SELECT image_name FROM images WHERE root_dir_id = ? LIMIT 1', (collection_id,))
         path = cursor.fetchone()
-        if id:
-            row['cover_image'] = path[0]
-        else:
-            raise LookupError(f"could not find any images in root_dir with id {collection_id}")
-
+        if id: row['cover_image'] = path[0]
+        else: raise LookupError(f"could not find any images in root_dir with id {collection_id}")
     conn.close()
     return jsonify(res)
 
@@ -80,25 +59,104 @@ def get_image(filename):
     result = cursor.fetchone()
     if not result:
         return "Image not found", 404
-
     image_full_path = result['image_full']
     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
-
     return send_file(image_full_path)
 
-@app.route('/labels/<path:filename>')
+@app.route('/label_classes/<path:filename>')
 def get_labels(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT labels FROM images WHERE image_name = ?', (filename,))
+    cursor.execute('''
+        SELECT r.label_classes 
+        FROM root_dirs AS r 
+        JOIN images AS i ON r.id = i.root_dir_id 
+        WHERE i.image_name = ?
+    ''', (filename,))
     result = cursor.fetchone()
-    if not result or not result['labels']:
-        return jsonify([])
+    print(result['label_classes'])
+    if not result or not result['label_classes']:
+        return jsonify({})
+    label_classes = {k:c for c,k in enumerate(result['label_classes'].split(" "))}
+    return jsonify(label_classes)
 
-    labels = json.loads(result['labels'])
-    print(labels)
-    print(type(jsonify(labels)), jsonify(labels))
-    return jsonify(labels)
+
+@app.route('/update_labels', methods=['POST'])
+def add_labels():
+    # Parse JSON data from the request
+    data = request.get_json()
+
+    # Ensure the JSON data contains both 'filename' and 'labels' keys
+    if not isinstance(data, dict) or 'filename' not in data or 'labels' not in data:
+        return "Invalid input data", 400
+
+    filename = data['filename']
+    labels = data['labels']
+
+    # Ensure 'labels' is a list or dict that can be converted to JSON
+    if not isinstance(labels, (list, dict)):
+        return "Invalid label data", 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Update the labels in the database for the given image
+    cursor.execute('UPDATE images SET labels = ? WHERE image_name = ?', (json.dumps(labels), filename))
+    conn.commit()
+    conn.close()
+    print(f'updated labels on image {filename}')
+
+    return jsonify({"status": "success", "message": "Labels added successfully"})
+
+@app.route('/predict/<path:filename>')
+def predict_image(filename):
+    # Define the path to the YOLO model
+    model_path = Path(__file__).parent / "models" / "feb16.pt"
+    model = YOLO(model_path)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT image_full FROM images WHERE image_name = ?', (filename,))
+    result = cursor.fetchone()
+    conn.close()
+    if not result:
+        return "Image not found", 404
+    image_full_path = result['image_full']
+    if not os.path.exists(image_full_path):
+        return "Image file does not exist", 404
+    preds = [p.boxes for p in model.predict(image_full_path)]
+    res = []
+    for p in model.predict(image_full_path):
+        for b in p.boxes:
+            for (_cls,_conf,_xyxy) in zip(b.cls.T.tolist(), b.conf.T.tolist(), b.xywhn.tolist()):
+                res.append({"class": _cls, "conf": _conf, "coordinates": _xyxy})
+    return jsonify(res)
+
+VIDEO_PATH = Path("/home/newton/repo/Football-Analysis-using-YOLO/output_videos")
+
+@app.route('/video')
+def video():
+    return render_template('video.html')
+
+@app.route('/video/<path:filename>')
+def stream_video(fname):
+    video_path = os.path.join(VIDEO_PATH, fname)
+    if not os.path.exists(video_path):
+        abort(404, description="Video file does not exist")
+    return send_file(video_path, mimetype='video/mp4')
+
+@app.route('/videos')
+def list_videos():
+    # List all video files in the VIDEO_DIR
+    videos = []
+    for filename in os.listdir(VIDEO_PATH):
+        if filename.endswith(('.mp4', '.webm', '.ogg')):  # Add supported video formats
+            videos.append({
+                'title': os.path.splitext(filename)[0],
+                'filename': str(Path(filename).name),
+                'thumbnailpath': f'/thumbnails/{os.path.splitext(filename)[0]}.jpg'  # assuming thumbnails are named similarly
+            })
+    return jsonify({"videos": videos})
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000)
+

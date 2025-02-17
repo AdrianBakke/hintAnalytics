@@ -23,10 +23,55 @@ let currentStateIndex = -1;
 let isLabeledImageShown = false;
 let isDrawingMode = false;
 let isFetchedLabels = false;
+let isPredictDone = false
 
 let selectedBoxIndex = null;
-const classColors = { '0': '#ff0000', 'default': '#00ff00' };
+let classColors = {}
 let labels = [];
+
+fetch(`/label_classes/${image}`)
+    .then(res => res.json())
+    .then(classes => {
+        console.log(classes)
+        // Update class colors and UI
+        Object.entries(classes).forEach(([label, index]) => {
+            console.log(label, index)
+            classColors[label] = `hsl(${(index * 137.5) % 360}, 100%, 50%)`; // Generate distinct colors
+            const option = document.createElement('option');
+            option.value = label;
+            option.textContent = label;
+            elements.classSelect.appendChild(option);
+        }, classColors);
+    })
+    .catch(console.error);
+
+
+function updateLabels() {
+    const data = {
+        filename: image, // Assuming `image` variable holds the current image filename
+        labels: labels   // Current state of labels to be saved
+    };
+    fetch('/update_labels', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("Failed to update labels");
+            }
+            return response.json();
+        })
+        .then(responseData => {
+            console.log(responseData.message); // Log success message
+        })
+        .catch(error => {
+            console.error("Error updating labels:", error);
+        });
+}
+
 
 function saveState() {
     // Prune buffer to the current state if we've undone some actions
@@ -36,6 +81,7 @@ function saveState() {
     // Save a deep copy of the current labels state
     changeBuffer.push(JSON.parse(JSON.stringify(labels)));
     currentStateIndex++;
+    updateLabels(); // Update labels on the server after saving state
 }
 
 // Function to undo the last action
@@ -49,16 +95,11 @@ function undoLastAction() {
 
 // Function to update button styles visually
 function updateButtonStyles() {
-    // Toggle button style
     elements.toggleButton.style.backgroundColor = isLabeledImageShown ? '#cccccc' : '#ffffff';
-
-    // Draw button style
     elements.drawButton.style.backgroundColor = isDrawingMode ? '#cccccc' : '#ffffff';
-
-    // Select button style
     elements.selectButton.style.backgroundColor = !isDrawingMode ? '#cccccc' : '#ffffff';
+    elements.runModelButton.style.backgroundColor = !isPredictDone ? '#cccccc' : '#ffffff';
 }
-
 
 // Function to draw bounding boxes
 function drawBoxes() {
@@ -70,6 +111,20 @@ function drawBoxes() {
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.strokeRect((cx - w / 2) * width, (cy - h / 2) * height, w * width, h * height);
+    });
+    updateClassLegend(); // Call function to update legend
+}
+
+// Update class legend UI
+function updateClassLegend() {
+    const legendContainer = document.getElementById('class-legend');
+    legendContainer.innerHTML = ''; // Clear previous legend
+    Object.entries(classColors).forEach(([label, color]) => {
+        const legendItem = document.createElement('div');
+        legendItem.style.display = 'flex';
+        legendItem.style.alignItems = 'center';
+        legendItem.innerHTML = `<div style="width: 20px; height: 20px; background-color: ${color}; margin-right: 5px;"></div> ${label}`;
+        legendContainer.appendChild(legendItem);
     });
 }
 
@@ -83,7 +138,7 @@ elements.toggleButton.addEventListener('click', () => {
                 .then(res => res.json())
                 .then(fetchedLabels => {
                     // Ensure `labels` is an array
-                    labels = labels.concat(JSON.parse(fetchedLabels))
+                    labels = labels.concat(fetchedLabels)
                     saveState();
                     drawBoxes();
                 })
@@ -115,11 +170,21 @@ elements.selectButton.addEventListener('click', () => {
     updateButtonStyles(); // Update styles after toggling
 });
 
-//elements.runModelButton.addEventListener('click', () => {
-//    // Add function to run the model when button is clicked
-//    console.log("Running model...");
-//});
-
+elements.runModelButton.addEventListener('click', () => {
+    if (!isPredictDone) {
+        isPredictDone = true
+        fetch(`/predict/${image}`)
+            .then(res => res.json())
+            .then(predictions => {
+                console.log(predictions)
+                // Ensure `labels` is an array
+                labels = labels.concat(predictions)
+                saveState();
+                drawBoxes();
+            })
+            .catch(console.error);
+    }
+});
 
 document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -191,7 +256,7 @@ function saveBoxCoordinates(x, y, width, height) {
     const cy = (y + height / 2) / imgHeight;
     const w = width / imgWidth;
     const h = height / imgHeight;
-    const selectedClass = 'new'; //elements.classSelect.value || Get selected class from dropdown
+    const selectedClass = elements.classSelect.value; // Get selected class from dropdown
     labels.push({ class: selectedClass, coordinates: [cx, cy, w, h] });
     drawBoxes();
     console.log({ class: selectedClass, cx, cy, w, h });
@@ -199,5 +264,5 @@ function saveBoxCoordinates(x, y, width, height) {
     saveState(); // Save state after a new box is added
 }
 
-updateButtonStyles()
 
+updateButtonStyles()

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Video Streaming with Thumbnails</title>
+    <style>
+        /* Container for thumbnails */
+        .thumbnails {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* Individual thumbnail styling */
+        .thumbnail {
+            cursor: pointer;
+            width: 150px;
+            height: 80px;
+            object-fit: cover;
+            border: 2px solid #ccc;
+            transition: border 0.3s;
+        }
+
+        /* Highlight thumbnail on hover */
+        .thumbnail:hover {
+            border: 2px solid #666;
+        }
+
+        /* Video player styling */
+        #videoPlayer {
+            width: 100%;
+            max-width: 800px;
+            height: 450px;
+            background-color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Video player -->
+    <video id="videoPlayer" controls>
+        <source src="" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+    <!-- Thumbnails container -->
+    <div class="thumbnails" id="thumbnailsContainer">
+        <!-- Thumbnails will be dynamically loaded here -->
+    </div>
+
+    <script>
+        // Get video player element
+        const videoPlayer = document.getElementById('videoPlayer');
+
+        // Get thumbnails container
+        const thumbnailsContainer = document.getElementById('thumbnailsContainer');
+
+        // Fetch video data from /videos endpoint
+        fetch('/videos')
+            .then(response => response.json())
+            .then(data => {
+                // Access the videos array from the response
+                const videos = data.videos;
+
+                videos.forEach(video => {
+                    // Create img element for each thumbnail
+                    const img = document.createElement('img');
+                    img.src = video.thumbnailPath; // Path to thumbnail image
+                    img.alt = video.title; // Alternative text
+                    img.classList.add('thumbnail');
+                    img.dataset.video = `/video/${video.filename}`; // Video streaming path
+
+                    // Add click event listener to thumbnail
+                    img.addEventListener('click', () => {
+                        // Update video source
+                        videoPlayer.src = `/video/${video.filename}`; // Video streaming path
+                        videoPlayer.load();
+                        videoPlayer.play();
+                    });
+
+                    // Append thumbnail to container
+                    thumbnailsContainer.appendChild(img);
+                });
+
+                // Optionally, load the first video by default
+                if (videos.length > 0) {
+                    const firstVideo = `/video/${videos[0].filename}`; // Corrected path
+                    videoPlayer.src = firstVideo;
+                    videoPlayer.load();
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching videos:', error);
+            });
+    </script>
+</body>
+
+</html>

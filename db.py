@@ -18,13 +18,15 @@ def convert_label_to_json(label_path):
     label_json = json.dumps(label_list)
     return label_json
 
+
 def create_db(db_name='images.db'):
     conn = sqlite3.connect(db_name)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS root_dirs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            root_dir TEXT NOT NULL
+            root_dir TEXT NOT NULL,
+            label_classes TEXT
         )
     ''')
     cursor.execute('''
@@ -47,7 +49,7 @@ def get_or_insert_root_dir(cursor, root_dir):
     if row:
         return row[0]
     else:
-        cursor.execute('INSERT INTO root_dirs (root_dir) VALUES (?)', (root_dir,))
+        cursor.execute('INSERT OR IGNORE INTO root_dirs (root_dir) VALUES (?)', (root_dir,))
         return cursor.lastrowid
 
 # Function to populate SQLite database with image paths
@@ -61,7 +63,8 @@ def populate_db_with_images(image_path, db_name='images.db'):
                 image_full = os.path.join(root, file)
                 image_name = file.rsplit('.', 1)[0]
                 cursor.execute('''
-                    INSERT INTO images (root_dir_id, image_full, image_name, labels) VALUES (?, ?, ?, ?)
+                    INSERT OR IGNORE INTO images (root_dir_id, image_full, image_name, labels) 
+                    VALUES (?, ?, ?, ?)
                 ''', (root_dir_id, image_full, image_name, json.dumps({})))
     conn.commit()
     conn.close()
@@ -76,8 +79,10 @@ def update_db_with_labels(label_path, db_name='images.db'):
                 label_json = convert_label_to_json(label_path)
                 image_name = os.path.splitext(file)[0]
                 cursor.execute('''
-                    UPDATE images SET labels = ? WHERE image_name = ?
-                ''', (json.dumps(label_json), image_name))
+                    UPDATE images 
+                    SET labels = ? 
+                    WHERE image_name = ? AND (labels IS NULL OR labels = ?)
+                ''', (label_json, image_name, json.dumps({})))
     conn.commit()
     conn.close()
 
@@ -86,8 +91,9 @@ if __name__ == "__main__":
     create_db()
     with open("paths.txt", "r") as f:
         f = f.read().splitlines()
-        for c,path in enumerate(f, 1):
-            if c%2==0:
-                update_db_with_labels(path)
-            else:
-                populate_db_with_images(path)
+        for c,line in enumerate(f, 1):
+            t,p = line.split(" ")
+            if t=="L":
+                update_db_with_labels(p)
+            elif t=="D":
+                populate_db_with_images(p)
