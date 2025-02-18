@@ -40,6 +40,39 @@ def get_image_collections():
     conn.close()
     return jsonify(res)
 
+@app.route('/image_id/<path:filename>')
+def get_image_id(filename):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Fetch the current image and its order
+    cursor.execute('SELECT id FROM images WHERE image_name = ?', (filename,))
+    current = cursor.fetchone()
+    if not current:
+        return "Image not found", 404
+    current_id = current['id']
+    return jsonify(current_id)
+
+
+# @app.route('/image_neighbors/<path:filename>')
+# def get_image_neighbors(filename):
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+#     cursor.execute('SELECT id FROM images WHERE image_name = ?', (filename,))
+#     current = cursor.fetchone()
+#     if not current:
+#         return "Image not found", 404
+#     current_id = current['id']
+#     cursor.execute('SELECT image_name FROM images WHERE id < ? ORDER BY id DESC LIMIT 1', (current_id,))
+#     previous_image = cursor.fetchone()
+#     cursor.execute('SELECT image_name FROM images WHERE id > ? ORDER BY id ASC LIMIT 1', (current_id,))
+#     next_image = cursor.fetchone()
+#     neighbors = {
+#         'previous': previous_image['image_name'] if previous_image else None,
+#         'next': next_image['image_name'] if next_image else None
+#     }
+#     conn.close()
+#     return jsonify(neighbors)
+
 @app.route('/images/<int:collection_id>')
 def list_images(collection_id):
     conn = get_db_connection()
@@ -60,19 +93,6 @@ def get_image(filename):
     image_full_path = result['image_full']
     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
     return send_file(image_full_path)
-
-# @app.route('/image_neightbors/<path:filename>')
-# def get_neigh_image(filename):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cursor.execute('SELECT image_full FROM images WHERE image_name = ?', (filename,))
-#     result = cursor.fetchone()
-#     if not result:
-#         return "Image not found", 404
-#     image_full_path = result['image_full']
-#     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
-#     return send_file(image_full_path)
-#
 
 @app.route('/label_classes/<path:filename>')
 def get_label_classes(filename):

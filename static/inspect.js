@@ -5,8 +5,9 @@ const elements = {
     toggleButton: document.getElementById('toggle-button'),
     drawButton: document.getElementById('draw-button'),
     selectButton: document.getElementById('select-button'),
-    runModelButton: document.getElementById('run-model-button'), // New button for running the model
-    classSelect: document.getElementById('class-select') // Dropdown or other element for class selection
+    runModelButton: document.getElementById('run-model-button'),
+    classSelect: document.getElementById('class-select'),
+    imgszSelect: document.getElementById('imgsz-select')
 };
 
 const ctx = elements.canvas.getContext('2d');
@@ -31,6 +32,24 @@ let classColors = {}
 let classNames = {}
 let labels = [];
 
+let images = [];
+let currentImageIndex = null;
+
+const imageSizes = [
+    { width: 640, height: 480 },   // 640x480 (VGA)
+    { width: 800, height: 600 },   // 800x600 (SVGA)
+    { width: 1024, height: 768 },  // 1024x768 (XGA)
+    { width: 1280, height: 720 },  // 1280x720 (HD)
+    { width: 1920, height: 1080 }  // 1920x1080 (Full HD)
+];
+
+fetch(`/image_id/${image}`)
+    .then(res => res.json())
+    .then(id => {
+        currentImageIndex = Number(id)
+    })
+    .catch(console.error);
+
 fetch(`/label_classes/${image}`)
     .then(res => res.json())
     .then(classes => {
@@ -44,6 +63,39 @@ fetch(`/label_classes/${image}`)
         }, classColors);
     })
     .catch(console.error);
+
+
+function setImageAndCanvasSize(width, height) {
+    const scaleFactorWidth = width / elements.img.naturalWidth;
+    const scaleFactorHeight = height / elements.img.naturalHeight;
+
+    elements.img.style.width = `${width}px`;
+    elements.img.style.height = `${height}px`;
+    elements.canvas.style.width = `${width}px`;
+    elements.canvas.style.height = `${height}px`;
+    elements.container.style.height = `${height}px`;
+    elements.container.style.width = `${width}px`;
+
+    // Optionally, adjust canvas scaling for maintaining aspect ratio
+    elements.canvas.width = width;
+    elements.canvas.height = height;
+}
+
+imageSizes.forEach((dim, index) => {
+    const option = document.createElement('option');
+    option.value = index;
+    option.textContent = `${dim.width}x${dim.height}`;
+    elements.imgszSelect.appendChild(option);
+});
+
+const defDim = imageSizes[3];
+setImageAndCanvasSize(defDim.width, defDim.height);
+
+// Add an event listener to handle changes in the dropdown
+elements.imgszSelect.addEventListener('change', (event) => {
+    const dim = imageSizes[event.target.value];
+    setImageAndCanvasSize(dim.width, dim.height);
+});
 
 function updateLabels() {
     const data = {
@@ -264,47 +316,125 @@ function saveBoxCoordinates(x, y, width, height) {
     saveState(); // Save state after a new box is added
 }
 
-function scaleImageAndCanvas(scaleFactor) {
-    elements.img.style.transform = `scale(${scaleFactor})`;
-    elements.canvas.style.transform = `scale(${scaleFactor})`;
-    elements.container.style.height = `${elements.img.naturalHeight * scaleFactor}px`; // Adjust container height
-    elements.container.style.width = `${elements.img.naturalWidth * scaleFactor}px`; // Adjust container width
-}
 
-// Example of usage: scale image and canvas by 1.2 (20% larger)
-//scaleImageAndCanvas(0.8);
+//fetch(`/images/2`)
+//    .then(res => res.json())
+//    .then(imgs => {
+//        images = imgs
+//        currentImageIndex = images.findIndex(img => img === image);
+//        displayedImages = 10; // Reset the number of displayed images
+//        createThumbnailBar(images);
+//    })
+//    .catch(console.error);
+let imageHasLabels = {};
 
+// After fetching images, determine which have labels
+fetch(`/images/2`)
+    .then(res => res.json())
+    .then(imgs => {
+        images = imgs;
+        currentImageIndex = images.findIndex(img => img === image);
+        displayedImages = 10; // Reset the number of displayed images
 
-// Load images for a specific collection
-async function loadCollectionImages() {
-    console.log("HELLO")
-    const res = await fetch(`/images/1`);
-    images = await res.json();
-    console.log(images)
-    displayedImages = 10; // Reset the number of displayed images
-    createThumbnailBar(images);
-}
+        // Fetch label status for all images
+        const labelPromises = images.map(img => {
+            return fetch(`/labels/${img}`)
+                .then(res => res.json())
+                .then(fetchedLabels => {
+                    imageHasLabels[img] = fetchedLabels.length > 0;
+                })
+                .catch(() => {
+                    imageHasLabels[img] = false;
+                });
+        });
 
-// Create the thumbnail bar for images
-function createThumbnailBar(images) {
+        // Wait for all label status fetches to complete
+        return Promise.all(labelPromises);
+    })
+    .then(() => {
+        createThumbnailBar(images);
+    })
+    .catch(console.error);
+
+function createThumbnailBar() {
     const thumbnailBar = document.getElementById('thumbnail-bar');
-    thumbnailBar.style.display = 'flex';
-    thumbnailBar.style.overflowX = 'scroll';
-    thumbnailBar.style.height = '100px'; // Set desired thumbnail height
-    thumbnailBar.style.borderTop = '1px solid #ccc'; // Optional: add a border
 
-    images.forEach((img, index) => {
+    thumbnailBar.style.display = 'flex';
+    thumbnailBar.style.overflowX = 'hidden';
+    thumbnailBar.style.height = '100px';
+    thumbnailBar.style.borderTop = '1px solid #ccc';
+
+    // Create and append left arrow button
+    const leftArrow = document.createElement('button');
+    leftArrow.textContent = '<';
+    leftArrow.style.cursor = 'pointer';
+    leftArrow.addEventListener('click', () => navigateThumbnails(-1));
+    thumbnailBar.appendChild(leftArrow);
+
+    // Create a container for thumbnails
+    const thumbnailsContainer = document.createElement('div');
+    thumbnailsContainer.style.display = 'flex';
+    thumbnailsContainer.style.overflowX = 'scroll';
+    thumbnailBar.appendChild(thumbnailsContainer);
+
+    // Create and append right arrow button
+    const rightArrow = document.createElement('button');
+    rightArrow.textContent = '>';
+    rightArrow.style.cursor = 'pointer';
+    rightArrow.addEventListener('click', () => navigateThumbnails(1));
+    thumbnailBar.appendChild(rightArrow);
+
+    // Initial rendering of thumbnails
+    renderThumbnails(thumbnailsContainer);
+}
+
+function renderThumbnails(container) {
+    container.innerHTML = ''; // Clear previous thumbnails
+
+    const endIndex = Math.min(currentImageIndex + 5, images.length);
+    for (let i = currentImageIndex; i < endIndex; i++) {
+        const img = images[i];
+        const thumbnailWrapper = document.createElement('div');
+        thumbnailWrapper.style.position = 'relative';
+        thumbnailWrapper.style.display = 'inline-block';
+
         const thumbnail = document.createElement('img');
         thumbnail.src = `/image/${img}`;
-        thumbnail.style.height = '100%'; // Maintain the height
-        thumbnail.style.cursor = 'pointer'; // Change cursor on hover
-        thumbnail.style.margin = '0 5px'; // Spacing between thumbnails
+        thumbnail.style.height = '90%';
+        thumbnail.style.cursor = 'pointer';
+        thumbnail.style.margin = '0 5px';
         thumbnail.style.border = img === image ? '2px solid red' : ''; // Highlight active image
         thumbnail.addEventListener('click', () => { window.location = `/inspect/${img}` });
-        thumbnailBar.appendChild(thumbnail);
-    });
+        thumbnailWrapper.appendChild(thumbnail);
+
+        // If the image has labels, add a semi-transparent green overlay
+        if (imageHasLabels[img]) {
+            const overlay = document.createElement('div');
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 255, 0, 0.3)'; // Semi-transparent green
+            overlay.title = 'This image has labels';
+            overlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+            thumbnailWrapper.appendChild(overlay);
+        }
+
+        container.appendChild(thumbnailWrapper);
+    }
 }
 
+function navigateThumbnails(direction) {
+    const maxIndex = images.length - 5;
+    if (direction === -1 && currentImageIndex > 0) {
+        currentImageIndex -= 1;
+    } else if (direction === 1 && currentImageIndex < maxIndex) {
+        currentImageIndex += 1;
+    }
+    const thumbnailsContainer = document.querySelector('#thumbnail-bar div');
+    renderThumbnails(thumbnailsContainer); // Update thumbnails without recreating the container
+}
 
+// Initialize the thumbnail bar with the current set of images
 updateButtonStyles()
-loadCollectionImages()
