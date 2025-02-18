@@ -149,7 +149,7 @@ const updateButtonStyles = (state, elements) => {
         toggleButton: isLabeledImageShown ? '#cccccc' : '#ffffff',
         drawButton: isDrawingMode ? '#cccccc' : '#ffffff',
         selectButton: !isDrawingMode ? '#cccccc' : '#ffffff',
-        runModelButton: !isPredictDone ? '#cccccc' : '#ffffff'
+        runModelButton: isPredictDone ? '#cccccc' : '#ffffff'
     };
     Object.entries(styles).forEach(([key, color]) => {
         elements[key].style.backgroundColor = color;
@@ -186,7 +186,7 @@ const updateClassLegend = (classColors, classNames, legendContainer) => {
 };
 
 // Event Handlers
-const handleToggleButtonClick = async (state, setState) => {
+const handleToggleButtonClick = async (state) => {
     const newState = { ...state, isLabeledImageShown: !state.isLabeledImageShown };
     if (newState.isLabeledImageShown) {
         try {
@@ -206,7 +206,7 @@ const handleToggleButtonClick = async (state, setState) => {
     updateButtonStyles(newState, elements);
 };
 
-const handleDrawButtonClick = (state, setState) => {
+const handleDrawButtonClick = (state) => {
     const newState = {
         ...state,
         isDrawingMode: !state.isDrawingMode,
@@ -216,7 +216,7 @@ const handleDrawButtonClick = (state, setState) => {
     updateButtonStyles(newState, elements);
 };
 
-const handleSelectButtonClick = (state, setState) => {
+const handleSelectButtonClick = (state) => {
     const newState = {
         ...state,
         isDrawingMode: false,
@@ -226,13 +226,12 @@ const handleSelectButtonClick = (state, setState) => {
     updateButtonStyles(newState, elements);
 };
 
-const handleClassSelectChange = (state, event, setState) => {
+const handleClassSelectChange = (state, event) => {
     const newState = { ...state, selectedClass: Number(event.target.value) };
     setState(newState);
-    console.log(`Selected class: ${newState.selectedClass}`);
 };
 
-const handleRunModelButtonClick = async (state, setState) => {
+const handleRunModelButtonClick = async (state) => {
     if (!state.isPredictDone || state.labels.length === 0) {
         try {
             const predictions = await fetchPredictions(state.image);
@@ -244,6 +243,7 @@ const handleRunModelButtonClick = async (state, setState) => {
             };
             setState(saveState(newState, true));
             drawBoxes(ctx, elements.canvas, newState.labels, newState.classColors, newState.selectedBoxIndex);
+            updateButtonStyles();
         } catch (error) {
             console.error(error);
         }
@@ -318,7 +318,7 @@ const initializeApp = async () => {
 
         const { classColors, classNames } = configureClasses(classes);
         setState({ ...state, classColors, classNames });
-        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(state, e, setState));
+        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(state, e));
 
         // Populate image size options
         imageSizes.forEach((dim, index) => {
@@ -337,7 +337,7 @@ const initializeApp = async () => {
         const imageHasLabels = await fetchLabelStatus(images);
         setState({ ...state, images, imageHasLabels, currentImageIndex: images.indexOf(image) });
 
-        createThumbnailBar(images, state, setState, elements);
+        createThumbnailBar(images, elements);
         updateButtonStyles(state, elements);
     } catch (error) {
         console.error(error);
@@ -345,10 +345,10 @@ const initializeApp = async () => {
 };
 
 // Event Listener Handlers
-elements.toggleButton.addEventListener('click', () => handleToggleButtonClick(state, setState));
-elements.drawButton.addEventListener('click', () => handleDrawButtonClick(state, setState));
-elements.selectButton.addEventListener('click', () => handleSelectButtonClick(state, setState));
-elements.runModelButton.addEventListener('click', () => handleRunModelButtonClick(state, setState));
+elements.toggleButton.addEventListener('click', () => handleToggleButtonClick(state));
+elements.drawButton.addEventListener('click', () => handleDrawButtonClick(state));
+elements.selectButton.addEventListener('click', () => handleSelectButtonClick(state));
+elements.runModelButton.addEventListener('click', () => handleRunModelButtonClick(state));
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -437,8 +437,6 @@ elements.canvas.addEventListener('mouseup', (e) => {
     }
 });
 
-
-
 // Create New Label Coordinates
 const createNewLabel = (state, endX, endY) => {
     const { startX, startY } = state;
@@ -455,27 +453,27 @@ const createNewLabel = (state, endX, endY) => {
 };
 
 // Thumbnail Bar Functions
-const createThumbnailBar = (images, state, setState, elements) => {
+const createThumbnailBar = (images, elements) => {
     elements.thumbnailBar.style.display = 'flex';
     elements.thumbnailBar.style.overflowX = 'hidden';
     elements.thumbnailBar.style.height = '100px';
     elements.thumbnailBar.style.borderTop = '1px solid #ccc';
 
     const leftArrow = createElement('button', { style: 'cursor: pointer;' }, '<');
-    leftArrow.addEventListener('click', () => navigateThumbnails(-1, state, setState, elements));
+    leftArrow.addEventListener('click', () => navigateThumbnails(-1, elements));
 
     const thumbnailsContainer = createElement('div', { style: 'display: flex; overflow-x: scroll;' });
-    renderThumbnails(thumbnailsContainer, state, setState, elements);
+    renderThumbnails(thumbnailsContainer, elements);
 
     const rightArrow = createElement('button', { style: 'cursor: pointer;' }, '>');
-    rightArrow.addEventListener('click', () => navigateThumbnails(1, state, setState, elements));
+    rightArrow.addEventListener('click', () => navigateThumbnails(1, elements));
 
     elements.thumbnailBar.appendChild(leftArrow);
     elements.thumbnailBar.appendChild(thumbnailsContainer);
     elements.thumbnailBar.appendChild(rightArrow);
 };
 
-const renderThumbnails = (container, state, setState, elements) => {
+const renderThumbnails = (container, elements) => {
     container.innerHTML = '';
     const { images, currentImageIndex, imageHasLabels, image } = state;
     const endIndex = Math.min(currentImageIndex + 5, images.length);
@@ -506,20 +504,18 @@ const renderThumbnails = (container, state, setState, elements) => {
     thumbnails.forEach(thumbnail => container.appendChild(thumbnail));
 };
 
-const navigateThumbnails = (direction, state, setState, elements) => {
+const navigateThumbnails = (direction, elements) => {
     const { currentImageIndex, images } = state;
-    const maxIndex = images.length - 5;
+    const maxIndex = images.length;
     let newIndex = currentImageIndex;
-
     if (direction === -1 && currentImageIndex > 0) {
         newIndex -= 1;
     } else if (direction === 1 && currentImageIndex < maxIndex) {
         newIndex += 1;
     }
-
     setState({ ...state, currentImageIndex: newIndex });
     const thumbnailsContainer = elements.thumbnailBar.querySelector('div');
-    renderThumbnails(thumbnailsContainer, { ...state, currentImageIndex: newIndex }, setState, elements);
+    renderThumbnails(thumbnailsContainer, elements);
 };
 
 // Initialize the application

@@ -6,7 +6,6 @@ def convert_label_to_json(label_path):
     label_list = []
     with open(label_path, 'r') as file:
         label_data = file.readlines()
-
     for line in label_data:
         parts = line.strip().split()
         label_dict = {
@@ -14,7 +13,6 @@ def convert_label_to_json(label_path):
             "coordinates": [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])]
         }
         label_list.append(label_dict)
-
     label_json = json.dumps(label_list)
     return label_json
 
