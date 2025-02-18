@@ -116,12 +116,15 @@ const updateLabels = async (image, labels) => {
 };
 
 // Save State
-const saveState = (state) => {
-    const { labels, changeBuffer, currentStateIndex } = state;
+const saveState = (state, persistent) => {
+    const { image, labels, changeBuffer, currentStateIndex } = state;
     const newBuffer = currentStateIndex < changeBuffer.length - 1
         ? changeBuffer.slice(0, currentStateIndex + 1)
         : changeBuffer.slice();
     newBuffer.push([...labels]);
+    if (persistent) {
+        updateLabels(state.image, labels)
+    }
     return { ...state, changeBuffer: newBuffer, currentStateIndex: currentStateIndex + 1 };
 };
 
@@ -199,7 +202,7 @@ const handleToggleButtonClick = async (state, setState) => {
     } else if (!newState.isLabeledImageShown) {
         ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
     }
-    setState(saveState(newState));
+    setState(saveState(newState, false));
     updateButtonStyles(newState, elements);
 };
 
@@ -230,7 +233,7 @@ const handleClassSelectChange = (state, event, setState) => {
 };
 
 const handleRunModelButtonClick = async (state, setState) => {
-    if (!state.isPredictDone) {
+    if (!state.isPredictDone || state.labels.length === 0) {
         try {
             const predictions = await fetchPredictions(state.image);
             const updatedLabels = [...state.labels, ...predictions];
@@ -239,7 +242,7 @@ const handleRunModelButtonClick = async (state, setState) => {
                 labels: updatedLabels,
                 isPredictDone: true
             };
-            setState(saveState(newState));
+            setState(saveState(newState, true));
             drawBoxes(ctx, elements.canvas, newState.labels, newState.classColors, newState.selectedBoxIndex);
         } catch (error) {
             console.error(error);
@@ -410,17 +413,31 @@ elements.canvas.addEventListener('mousemove', (e) => {
     ctx.strokeRect(state.startX, state.startY, currentX - state.startX, currentY - state.startY);
 });
 
+const MIN_BOX_WIDTH = 10;
+const MIN_BOX_HEIGHT = 10;
 elements.canvas.addEventListener('mouseup', (e) => {
     if (!state.isDrawing) return;
     const rect = elements.canvas.getBoundingClientRect();
     const endX = e.clientX - rect.left;
     const endY = e.clientY - rect.top;
 
-    const newLabel = createNewLabel(state, endX, endY);
-    setState({ ...state, labels: [...state.labels, newLabel], isDrawing: false });
-    drawBoxes(ctx, elements.canvas, [...state.labels, newLabel], state.classColors, state.selectedBoxIndex);
-    updateLabels(state.image, [...state.labels, newLabel]);
+    const width = Math.abs(endX - state.startX);
+    const height = Math.abs(endY - state.startY);
+
+    // Check if the drawn box meets the minimum size requirements
+    if (width >= MIN_BOX_WIDTH && height >= MIN_BOX_HEIGHT) {
+        const newLabel = createNewLabel(state, endX, endY);
+        setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }, true));
+        drawBoxes(ctx, elements.canvas, [...state.labels, newLabel], state.classColors, state.selectedBoxIndex);
+        updateLabels(state.image, [...state.labels, newLabel]);
+    } else {
+        // If the box is too small, cancel drawing
+        setState({ ...state, isDrawing: false });
+        drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
+    }
 });
+
+
 
 // Create New Label Coordinates
 const createNewLabel = (state, endX, endY) => {
