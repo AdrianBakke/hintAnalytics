@@ -1,440 +1,509 @@
+// Utility Functions
+const getElement = (id) => document.getElementById(id);
+const createElement = (tag, attributes = {}, ...children) => {
+    const element = document.createElement(tag);
+    Object.entries(attributes).forEach(([key, value]) => {
+        if (key.startsWith('on') && typeof value === 'function') {
+            element.addEventListener(key.substring(2).toLowerCase(), value);
+        } else {
+            element[key] = value;
+        }
+    });
+    children.forEach(child => {
+        if (typeof child === 'string') element.appendChild(document.createTextNode(child));
+        else if (child instanceof Node) element.appendChild(child);
+    });
+    return element;
+};
+
+// Initial Setup
 const elements = {
-    container: document.getElementById('container'),
-    img: document.getElementById('image-view'),
-    canvas: document.getElementById('overlay'),
-    toggleButton: document.getElementById('toggle-button'),
-    drawButton: document.getElementById('draw-button'),
-    selectButton: document.getElementById('select-button'),
-    runModelButton: document.getElementById('run-model-button'),
-    classSelect: document.getElementById('class-select'),
-    imgszSelect: document.getElementById('imgsz-select')
+    container: getElement('container'),
+    img: getElement('image-view'),
+    canvas: getElement('overlay'),
+    toggleButton: getElement('toggle-button'),
+    drawButton: getElement('draw-button'),
+    selectButton: getElement('select-button'),
+    runModelButton: getElement('run-model-button'),
+    classSelect: getElement('class-select'),
+    imgszSelect: getElement('imgsz-select'),
+    classLegend: getElement('class-legend'),
+    thumbnailBar: getElement('thumbnail-bar')
 };
 
 const ctx = elements.canvas.getContext('2d');
 
-// Initial setup
-elements.img.src = `/image/${image}`;
-elements.img.onload = () => {
-    elements.canvas.width = elements.img.naturalWidth;
-    elements.canvas.height = elements.img.naturalHeight;
-};
-let changeBuffer = [];
-let currentStateIndex = -1;
-
-let isLabeledImageShown = false;
-let isDrawingMode = false;
-let isFetchedLabels = false;
-let isPredictDone = false
-
-let selectedClass = null;
-let selectedBoxIndex = null;
-let classColors = {}
-let classNames = {}
-let labels = [];
-
-let images = [];
-let currentImageIndex = null;
-
 const imageSizes = [
-    { width: 640, height: 480 },   // 640x480 (VGA)
-    { width: 800, height: 600 },   // 800x600 (SVGA)
-    { width: 1024, height: 768 },  // 1024x768 (XGA)
-    { width: 1280, height: 720 },  // 1280x720 (HD)
-    { width: 1920, height: 1080 }  // 1920x1080 (Full HD)
+    { width: 640, height: 480 },   // VGA
+    { width: 800, height: 600 },   // SVGA
+    { width: 1024, height: 768 },  // XGA
+    { width: 1280, height: 720 },  // HD
+    { width: 1920, height: 1080 }  // Full HD
 ];
 
-fetch(`/image_id/${image}`)
-    .then(res => res.json())
-    .then(id => {
-        currentImageIndex = Number(id)
-    })
-    .catch(console.error);
+// State Management
+const initialState = {
+    image: image, // To be set dynamically
+    imageId: null,
+    labels: [],
+    changeBuffer: [],
+    currentStateIndex: -1,
+    isLabeledImageShown: false,
+    isDrawingMode: false,
+    isFetchedLabels: false,
+    isPredictDone: false,
+    selectedClass: null,
+    selectedBoxIndex: null,
+    classColors: {},
+    classNames: {},
+    images: [],
+    currentImageIndex: null,
+    imageHasLabels: {},
+    isDrawing: false,
+    startX: 0,
+    startY: 0
+};
 
-fetch(`/label_classes/${image}`)
-    .then(res => res.json())
-    .then(classes => {
-        Object.entries(classes).forEach(([label, index]) => {
-            classColors[index] = `hsl(${(index * 137.5) % 360}, 100%, 50%)`; // Generate distinct colors
-            classNames[index] = label
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = label;
-            elements.classSelect.appendChild(option);
-        }, classColors);
-    })
-    .catch(console.error);
+// Pure Function to Configure Class Colors and Names
+const configureClasses = (classes) => {
+    const classColors = {};
+    const classNames = {};
+    Object.entries(classes).forEach(([label, index]) => {
+        classColors[index] = `hsl(${(index * 137.5) % 360}, 100%, 50%)`;
+        classNames[index] = label;
+    });
+    return { classColors, classNames };
+};
 
+// Populate Class Select Dropdown
+const populateClassSelect = (classSelect, classes, onChange) => {
+    classes.forEach(([label, index]) => {
+        const option = createElement('option', { value: index }, label);
+        classSelect.appendChild(option);
+    });
+    classSelect.addEventListener('change', onChange);
+};
 
-function setImageAndCanvasSize(width, height) {
-    const scaleFactorWidth = width / elements.img.naturalWidth;
-    const scaleFactorHeight = height / elements.img.naturalHeight;
-
-    elements.img.style.width = `${width}px`;
-    elements.img.style.height = `${height}px`;
-    elements.canvas.style.width = `${width}px`;
-    elements.canvas.style.height = `${height}px`;
-    elements.container.style.height = `${height}px`;
-    elements.container.style.width = `${width}px`;
-
-    // Optionally, adjust canvas scaling for maintaining aspect ratio
-    elements.canvas.width = width;
-    elements.canvas.height = height;
-}
-
-imageSizes.forEach((dim, index) => {
-    const option = document.createElement('option');
-    option.value = index;
-    option.textContent = `${dim.width}x${dim.height}`;
-    elements.imgszSelect.appendChild(option);
-});
-
-const defDim = imageSizes[3];
-setImageAndCanvasSize(defDim.width, defDim.height);
-
-// Add an event listener to handle changes in the dropdown
-elements.imgszSelect.addEventListener('change', (event) => {
-    const dim = imageSizes[event.target.value];
-    setImageAndCanvasSize(dim.width, dim.height);
-});
-
-function updateLabels() {
-    const data = {
-        filename: image, // Assuming `image` variable holds the current image filename
-        labels: labels   // Current state of labels to be saved
-    };
-    console.log(data)
-    fetch('/update_labels', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error("Failed to update labels");
-            }
-            return response.json();
-        })
-        .then(responseData => {
-            console.log(responseData.message); // Log success message
-        })
-        .catch(error => {
-            console.error("Error updating labels:", error);
+// Image and Canvas Sizes
+const setImageAndCanvasSize = (img, canvas, container, width, height) => {
+    return () => {
+        const dimensions = { width, height };
+        Object.entries(dimensions).forEach(([key, value]) => {
+            img.style[key] = `${value}px`;
+            canvas.style[key] = `${value}px`;
+            container.style[key] = `${value}px`;
         });
-}
+        canvas.width = width;
+        canvas.height = height;
+    };
+};
 
-
-function saveState() {
-    // Prune buffer to the current state if we've undone some actions
-    if (currentStateIndex < changeBuffer.length - 1) {
-        changeBuffer = changeBuffer.slice(0, currentStateIndex + 1);
+// Update Labels on the Server
+const updateLabels = async (image, labels) => {
+    const data = { filename: image, labels };
+    try {
+        const response = await fetch('/update_labels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error("Failed to update labels");
+        const responseData = await response.json();
+        console.log(responseData.message);
+    } catch (error) {
+        console.error("Error updating labels:", error);
     }
-    // Save a deep copy of the current labels state
-    changeBuffer.push(labels);
-    currentStateIndex++;
-    updateLabels(); // Update labels on the server after saving state
-}
+};
 
-// Function to undo the last action
-function undoLastAction() {
-    if (currentStateIndex > 0) {
-        currentStateIndex--;
-        labels = JSON.parse(JSON.stringify(changeBuffer[currentStateIndex]));
-        drawBoxes();
+// Save State
+const saveState = (state) => {
+    const { labels, changeBuffer, currentStateIndex } = state;
+    const newBuffer = currentStateIndex < changeBuffer.length - 1
+        ? changeBuffer.slice(0, currentStateIndex + 1)
+        : changeBuffer.slice();
+    newBuffer.push([...labels]);
+    return { ...state, changeBuffer: newBuffer, currentStateIndex: currentStateIndex + 1 };
+};
+
+// Undo Last Action
+const undoLastAction = (state) => {
+    if (state.currentStateIndex > 0) {
+        const newIndex = state.currentStateIndex - 1;
+        return {
+            ...state,
+            labels: [...state.changeBuffer[newIndex]],
+            currentStateIndex: newIndex,
+            selectedBoxIndex: null
+        };
     }
-}
+    return state;
+};
 
-// Function to update button styles visually
-function updateButtonStyles() {
-    elements.toggleButton.style.backgroundColor = isLabeledImageShown ? '#cccccc' : '#ffffff';
-    elements.drawButton.style.backgroundColor = isDrawingMode ? '#cccccc' : '#ffffff';
-    elements.selectButton.style.backgroundColor = !isDrawingMode ? '#cccccc' : '#ffffff';
-    elements.runModelButton.style.backgroundColor = !isPredictDone ? '#cccccc' : '#ffffff';
-}
+// Update Button Styles
+const updateButtonStyles = (state, elements) => {
+    const { isLabeledImageShown, isDrawingMode, isPredictDone } = state;
+    const styles = {
+        toggleButton: isLabeledImageShown ? '#cccccc' : '#ffffff',
+        drawButton: isDrawingMode ? '#cccccc' : '#ffffff',
+        selectButton: !isDrawingMode ? '#cccccc' : '#ffffff',
+        runModelButton: !isPredictDone ? '#cccccc' : '#ffffff'
+    };
+    Object.entries(styles).forEach(([key, color]) => {
+        elements[key].style.backgroundColor = color;
+    });
+};
 
-// Function to draw bounding boxes
-function drawBoxes() {
-    ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+// Draw Bounding Boxes
+const drawBoxes = (ctx, canvas, labels, classColors, selectedBoxIndex) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     labels.forEach((label, index) => {
         const [cx, cy, w, h] = label.coordinates;
         const color = index === selectedBoxIndex ? '#0000ff' : classColors[label.class];
-        const { width, height } = elements.canvas;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
-        ctx.strokeRect((cx - w / 2) * width, (cy - h / 2) * height, w * width, h * height);
+        ctx.strokeRect(
+            (cx - w / 2) * canvas.width,
+            (cy - h / 2) * canvas.height,
+            w * canvas.width,
+            h * canvas.height
+        );
     });
-    updateClassLegend(); // Call function to update legend
-}
+};
 
-// Update class legend UI
-function updateClassLegend() {
-    const legendContainer = document.getElementById('class-legend');
-    legendContainer.innerHTML = ''; // Clear previous legend
+// Update Class Legend
+const updateClassLegend = (classColors, classNames, legendContainer) => {
+    legendContainer.innerHTML = '';
     Object.entries(classColors).forEach(([label, color]) => {
-        const legendItem = document.createElement('div');
-        legendItem.style.display = 'flex';
-        legendItem.style.alignItems = 'center';
-        legendItem.innerHTML = `<div style="width: 20px; height: 20px; background-color: ${color}; margin-right: 5px;"></div> ${classNames[label]}`;
+        const legendItem = createElement('div', { style: 'display: flex; align-items: center;' },
+            createElement('div', { style: `width: 20px; height: 20px; background-color: ${color}; margin-right: 5px;` }),
+            document.createTextNode(classNames[label])
+        );
         legendContainer.appendChild(legendItem);
     });
-}
+};
 
-// Event listeners for buttons
-elements.toggleButton.addEventListener('click', () => {
-    isLabeledImageShown = !isLabeledImageShown;
-
-    if (isLabeledImageShown) {
-        if (!isFetchedLabels) {
-            fetch(`/labels/${image}`)
-                .then(res => res.json())
-                .then(fetchedLabels => {
-                    // Ensure `labels` is an array
-                    labels = labels.concat(fetchedLabels)
-                    saveState();
-                    drawBoxes();
-                })
-                .catch(console.error);
-            isFetchedLabels = true;
-        } else {
-            drawBoxes();
+// Event Handlers
+const handleToggleButtonClick = async (state, setState) => {
+    const newState = { ...state, isLabeledImageShown: !state.isLabeledImageShown };
+    if (newState.isLabeledImageShown) {
+        try {
+            if (!newState.isFetchedLabels) {
+                const fetchedLabels = await fetchLabels(newState.image);
+                newState.labels = fetchedLabels;
+                newState.isFetchedLabels = true;
+            }
+            drawBoxes(ctx, elements.canvas, newState.labels, newState.classColors, newState.selectedBoxIndex);
+        } catch (error) {
+            console.error(error);
         }
-    } else {
+    } else if (!newState.isLabeledImageShown) {
+        ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+    }
+    setState(saveState(newState));
+    updateButtonStyles(newState, elements);
+};
+
+const handleDrawButtonClick = (state, setState) => {
+    const newState = {
+        ...state,
+        isDrawingMode: !state.isDrawingMode,
+        selectedBoxIndex: null
+    };
+    setState(newState);
+    updateButtonStyles(newState, elements);
+};
+
+const handleSelectButtonClick = (state, setState) => {
+    const newState = {
+        ...state,
+        isDrawingMode: false,
+        selectedBoxIndex: null
+    };
+    setState(newState);
+    updateButtonStyles(newState, elements);
+};
+
+const handleClassSelectChange = (state, event, setState) => {
+    const newState = { ...state, selectedClass: Number(event.target.value) };
+    setState(newState);
+    console.log(`Selected class: ${newState.selectedClass}`);
+};
+
+const handleRunModelButtonClick = async (state, setState) => {
+    if (!state.isPredictDone) {
+        try {
+            const predictions = await fetchPredictions(state.image);
+            const updatedLabels = [...state.labels, ...predictions];
+            const newState = {
+                ...state,
+                labels: updatedLabels,
+                isPredictDone: true
+            };
+            setState(saveState(newState));
+            drawBoxes(ctx, elements.canvas, newState.labels, newState.classColors, newState.selectedBoxIndex);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+};
+
+// Fetch Functions
+const fetchLabels = async (image) => {
+    const res = await fetch(`/labels/${image}`);
+    if (!res.ok) throw new Error("Failed to fetch labels");
+    return await res.json();
+};
+
+const fetchPredictions = async (image) => {
+    const res = await fetch(`/predict/${image}`);
+    if (!res.ok) throw new Error("Failed to fetch predictions");
+    return await res.json();
+};
+
+const fetchImageId = async (image) => {
+    const res = await fetch(`/image_id/${image}`);
+    if (!res.ok) throw new Error("Failed to fetch image ID");
+    const id = await res.json();
+    return Number(id);
+};
+
+const fetchClasses = async (image) => {
+    const res = await fetch(`/label_classes/${image}`);
+    if (!res.ok) throw new Error("Failed to fetch label classes");
+    return await res.json();
+};
+
+const fetchImages = async () => {
+    const res = await fetch(`/images/2`);
+    if (!res.ok) throw new Error("Failed to fetch images");
+    return await res.json();
+};
+
+const fetchLabelStatus = async (images) => {
+    const statusPromises = images.map(async (img) => {
+        try {
+            const labels = await fetchLabels(img);
+            return { img, hasLabels: labels.length > 0 };
+        } catch {
+            return { img, hasLabels: false };
+        }
+    });
+    const statuses = await Promise.all(statusPromises);
+    return statuses.reduce((acc, { img, hasLabels }) => {
+        acc[img] = hasLabels;
+        return acc;
+    }, {});
+};
+
+// State Setter
+let state = initialState;
+const setState = (newState) => {
+    state = newState;
+};
+
+// Initialize Application
+const initializeApp = async () => {
+    try {
+        const image = state.image; // Set this appropriately
         elements.img.src = `/image/${image}`;
-        showLabels = [];
-        drawBoxes(); // Redraw without labels
+
+        const [imageId, classes] = await Promise.all([
+            fetchImageId(image),
+            fetchClasses(image)
+        ]);
+        setState({ ...state, imageId });
+
+        const { classColors, classNames } = configureClasses(classes);
+        setState({ ...state, classColors, classNames });
+        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(state, e, setState));
+
+        // Populate image size options
+        imageSizes.forEach((dim, index) => {
+            const option = createElement('option', { value: index }, `${dim.width}x${dim.height}`);
+            elements.imgszSelect.appendChild(option);
+        });
+        elements.imgszSelect.selectedIndex = 3;
+        setImageAndCanvasSize(elements.img, elements.canvas, elements.container, imageSizes[3].width, imageSizes[3].height)();
+
+        elements.imgszSelect.addEventListener('change', (e) => {
+            const dim = imageSizes[e.target.value];
+            setImageAndCanvasSize(elements.img, elements.canvas, elements.container, dim.width, dim.height)();
+        });
+
+        const images = await fetchImages(2);
+        const imageHasLabels = await fetchLabelStatus(images);
+        setState({ ...state, images, imageHasLabels, currentImageIndex: images.indexOf(image) });
+
+        createThumbnailBar(images, state, setState, elements);
+        updateButtonStyles(state, elements);
+    } catch (error) {
+        console.error(error);
     }
+};
 
-    updateButtonStyles(); // Update styles after toggling
-});
-
-elements.drawButton.addEventListener('click', () => {
-    isDrawingMode = !isDrawingMode;
-    selectedBoxIndex = null; // Deselect any selected box
-    updateButtonStyles(); // Update styles after toggling
-});
-
-elements.selectButton.addEventListener('click', () => {
-    isDrawingMode = false; // Disable drawing mode if active
-    selectedBoxIndex = null; // Deselect any selected box
-    updateButtonStyles(); // Update styles after toggling
-});
-
-elements.classSelect.addEventListener('change', (event) => {
-    selectedClass = event.target.value; // Set the selected class to the value of the selected option
-    console.log(`Selected class: ${selectedClass}`); // Optional: Log the selected class for debugging
-});
-
-elements.runModelButton.addEventListener('click', () => {
-    if (!isPredictDone) {
-        isPredictDone = true
-        fetch(`/predict/${image}`)
-            .then(res => res.json())
-            .then(predictions => {
-                labels = labels.concat(predictions)
-                saveState();
-                drawBoxes();
-            })
-            .catch(console.error);
-    }
-});
+// Event Listener Handlers
+elements.toggleButton.addEventListener('click', () => handleToggleButtonClick(state, setState));
+elements.drawButton.addEventListener('click', () => handleDrawButtonClick(state, setState));
+elements.selectButton.addEventListener('click', () => handleSelectButtonClick(state, setState));
+elements.runModelButton.addEventListener('click', () => handleRunModelButtonClick(state, setState));
 
 document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-        if (e.key === 'z') {
-            // Ctrl+Z or Cmd+Z pressed for undo
-            undoLastAction();
-        }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        setState(undoLastAction(state));
+        drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
     } else {
-        if (e.key === 'x' && selectedBoxIndex !== null) {
-            // 'x' pressed to delete the selected box
-            labels.splice(selectedBoxIndex, 1);
-            selectedBoxIndex = null;
-            drawBoxes();
-            saveState(); // Save state after deletion
-        } else if (e.key === 'd') {
-            elements.drawButton.click(); // Shortcut for draw button
-        } else if (e.key === 't') {
-            elements.toggleButton.click(); // Shortcut for toggle button
-        } else if (e.key === 's') {
-            elements.selectButton.click(); // Shortcut for select button
+        switch (e.key) {
+            case 'x':
+                if (state.selectedBoxIndex !== null) {
+                    const updatedLabels = state.labels.filter((_, idx) => idx !== state.selectedBoxIndex);
+                    setState({ ...state, labels: updatedLabels, selectedBoxIndex: null });
+                    drawBoxes(ctx, elements.canvas, updatedLabels, state.classColors, null);
+                    updateLabels(state.image, updatedLabels);
+                }
+                break;
+            case 'd':
+                elements.drawButton.click();
+                break;
+            case 't':
+                elements.toggleButton.click();
+                break;
+            case 's':
+                elements.selectButton.click();
+                break;
+            default:
+                break;
         }
     }
-
-    updateButtonStyles(); // Update styles on key press
+    updateButtonStyles(state, elements);
 });
 
-// Variables for drawing state
-let isDrawing = false;
-let startX = 0, startY = 0;
-
+// Canvas Event Handlers
 elements.canvas.addEventListener('mousedown', (e) => {
     const rect = elements.canvas.getBoundingClientRect();
-    const [x, y] = [e.clientX - rect.left, e.clientY - rect.top];
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-    if (isDrawingMode) {
-        startX = x;
-        startY = y;
-        isDrawing = true;
+    if (state.isDrawingMode) {
+        setState({ ...state, isDrawing: true, startX: x, startY: y });
     } else {
-        selectedBoxIndex = labels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
-            const [bx, by, bw, bh] = [(cx - w / 2) * elements.canvas.width, (cy - h / 2) * elements.canvas.height, w * elements.canvas.width, h * elements.canvas.height];
+        const selectedIndex = state.labels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
+            const bx = (cx - w / 2) * elements.canvas.width;
+            const by = (cy - h / 2) * elements.canvas.height;
+            const bw = w * elements.canvas.width;
+            const bh = h * elements.canvas.height;
             return x >= bx && x <= bx + bw && y >= by && y <= by + bh;
         });
-        drawBoxes();
+        setState({ ...state, selectedBoxIndex: selectedIndex !== -1 ? selectedIndex : null });
+        drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
     }
 });
 
 elements.canvas.addEventListener('mousemove', (e) => {
-    if (!isDrawing) return;
+    if (!state.isDrawing) return;
     const rect = elements.canvas.getBoundingClientRect();
-    const [currentX, currentY] = [e.clientX - rect.left, e.clientY - rect.top];
-    drawBoxes();
-    ctx.strokeStyle = classColors[selectedClass]
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+
+    drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
+    ctx.strokeStyle = state.classColors[state.selectedClass];
     ctx.lineWidth = 2;
-    ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+    ctx.strokeRect(state.startX, state.startY, currentX - state.startX, currentY - state.startY);
 });
 
 elements.canvas.addEventListener('mouseup', (e) => {
-    if (!isDrawing) return;
+    if (!state.isDrawing) return;
     const rect = elements.canvas.getBoundingClientRect();
-    const [endX, endY] = [e.clientX - rect.left, e.clientY - rect.top];
-    saveBoxCoordinates(startX, startY, endX - startX, endY - startY);
-    isDrawing = false;
+    const endX = e.clientX - rect.left;
+    const endY = e.clientY - rect.top;
+
+    const newLabel = createNewLabel(state, endX, endY);
+    setState({ ...state, labels: [...state.labels, newLabel], isDrawing: false });
+    drawBoxes(ctx, elements.canvas, [...state.labels, newLabel], state.classColors, state.selectedBoxIndex);
+    updateLabels(state.image, [...state.labels, newLabel]);
 });
 
-function saveBoxCoordinates(x, y, width, height) {
-    const { width: imgWidth, height: imgHeight } = elements.canvas;
-    const cx = (x + width / 2) / imgWidth;
-    const cy = (y + height / 2) / imgHeight;
-    const w = width / imgWidth;
-    const h = height / imgHeight;
-    const selectedClass = Number(elements.classSelect.value); // Get selected class from dropdown
-    labels.push({ class: selectedClass, coordinates: [cx, cy, w, h] });
-    drawBoxes();
-    console.log({ class: selectedClass, cx, cy, w, h });
-    saveState(); // Save state after a new box is added
-}
+// Create New Label Coordinates
+const createNewLabel = (state, endX, endY) => {
+    const { startX, startY } = state;
+    const x = state.startX;
+    const y = state.startY;
+    const width = endX - x;
+    const height = endY - y;
+    const cx = (x + width / 2) / elements.canvas.width;
+    const cy = (y + height / 2) / elements.canvas.height;
+    const w = width / elements.canvas.width;
+    const h = height / elements.canvas.height;
+    const selectedClass = state.selectedClass || Number(elements.classSelect.value);
+    return { class: selectedClass, coordinates: [cx, cy, w, h] };
+};
 
+// Thumbnail Bar Functions
+const createThumbnailBar = (images, state, setState, elements) => {
+    elements.thumbnailBar.style.display = 'flex';
+    elements.thumbnailBar.style.overflowX = 'hidden';
+    elements.thumbnailBar.style.height = '100px';
+    elements.thumbnailBar.style.borderTop = '1px solid #ccc';
 
-//fetch(`/images/2`)
-//    .then(res => res.json())
-//    .then(imgs => {
-//        images = imgs
-//        currentImageIndex = images.findIndex(img => img === image);
-//        displayedImages = 10; // Reset the number of displayed images
-//        createThumbnailBar(images);
-//    })
-//    .catch(console.error);
-let imageHasLabels = {};
+    const leftArrow = createElement('button', { style: 'cursor: pointer;' }, '<');
+    leftArrow.addEventListener('click', () => navigateThumbnails(-1, state, setState, elements));
 
-// After fetching images, determine which have labels
-fetch(`/images/2`)
-    .then(res => res.json())
-    .then(imgs => {
-        images = imgs;
-        currentImageIndex = images.findIndex(img => img === image);
-        displayedImages = 10; // Reset the number of displayed images
+    const thumbnailsContainer = createElement('div', { style: 'display: flex; overflow-x: scroll;' });
+    renderThumbnails(thumbnailsContainer, state, setState, elements);
 
-        // Fetch label status for all images
-        const labelPromises = images.map(img => {
-            return fetch(`/labels/${img}`)
-                .then(res => res.json())
-                .then(fetchedLabels => {
-                    imageHasLabels[img] = fetchedLabels.length > 0;
-                })
-                .catch(() => {
-                    imageHasLabels[img] = false;
-                });
+    const rightArrow = createElement('button', { style: 'cursor: pointer;' }, '>');
+    rightArrow.addEventListener('click', () => navigateThumbnails(1, state, setState, elements));
+
+    elements.thumbnailBar.appendChild(leftArrow);
+    elements.thumbnailBar.appendChild(thumbnailsContainer);
+    elements.thumbnailBar.appendChild(rightArrow);
+};
+
+const renderThumbnails = (container, state, setState, elements) => {
+    container.innerHTML = '';
+    const { images, currentImageIndex, imageHasLabels, image } = state;
+    const endIndex = Math.min(currentImageIndex + 5, images.length);
+    const thumbnails = images.slice(currentImageIndex, endIndex).map(img => {
+        const thumbnailWrapper = createElement('div', { style: 'position: relative; display: inline-block;' });
+
+        const thumbnail = createElement('img', {
+            src: `/image/${img}`,
+            style: 'height: 90%; cursor: pointer; margin: 0 5px;',
+            border: img === image ? '2px solid red' : '',
+            title: 'Click to inspect',
+            onclick: () => window.location = `/inspect/${img}`
         });
 
-        // Wait for all label status fetches to complete
-        return Promise.all(labelPromises);
-    })
-    .then(() => {
-        createThumbnailBar(images);
-    })
-    .catch(console.error);
-
-function createThumbnailBar() {
-    const thumbnailBar = document.getElementById('thumbnail-bar');
-
-    thumbnailBar.style.display = 'flex';
-    thumbnailBar.style.overflowX = 'hidden';
-    thumbnailBar.style.height = '100px';
-    thumbnailBar.style.borderTop = '1px solid #ccc';
-
-    // Create and append left arrow button
-    const leftArrow = document.createElement('button');
-    leftArrow.textContent = '<';
-    leftArrow.style.cursor = 'pointer';
-    leftArrow.addEventListener('click', () => navigateThumbnails(-1));
-    thumbnailBar.appendChild(leftArrow);
-
-    // Create a container for thumbnails
-    const thumbnailsContainer = document.createElement('div');
-    thumbnailsContainer.style.display = 'flex';
-    thumbnailsContainer.style.overflowX = 'scroll';
-    thumbnailBar.appendChild(thumbnailsContainer);
-
-    // Create and append right arrow button
-    const rightArrow = document.createElement('button');
-    rightArrow.textContent = '>';
-    rightArrow.style.cursor = 'pointer';
-    rightArrow.addEventListener('click', () => navigateThumbnails(1));
-    thumbnailBar.appendChild(rightArrow);
-
-    // Initial rendering of thumbnails
-    renderThumbnails(thumbnailsContainer);
-}
-
-function renderThumbnails(container) {
-    container.innerHTML = ''; // Clear previous thumbnails
-
-    const endIndex = Math.min(currentImageIndex + 5, images.length);
-    for (let i = currentImageIndex; i < endIndex; i++) {
-        const img = images[i];
-        const thumbnailWrapper = document.createElement('div');
-        thumbnailWrapper.style.position = 'relative';
-        thumbnailWrapper.style.display = 'inline-block';
-
-        const thumbnail = document.createElement('img');
-        thumbnail.src = `/image/${img}`;
-        thumbnail.style.height = '90%';
-        thumbnail.style.cursor = 'pointer';
-        thumbnail.style.margin = '0 5px';
-        thumbnail.style.border = img === image ? '2px solid red' : ''; // Highlight active image
-        thumbnail.addEventListener('click', () => { window.location = `/inspect/${img}` });
         thumbnailWrapper.appendChild(thumbnail);
 
-        // If the image has labels, add a semi-transparent green overlay
         if (imageHasLabels[img]) {
-            const overlay = document.createElement('div');
-            overlay.style.position = 'absolute';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.backgroundColor = 'rgba(0, 255, 0, 0.3)'; // Semi-transparent green
-            overlay.title = 'This image has labels';
-            overlay.style.pointerEvents = 'none'; // Allow clicks to pass through
+            const overlay = createElement('div', {
+                style: 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 255, 0, 0.3); pointer-events: none;',
+                title: 'This image has labels'
+            });
             thumbnailWrapper.appendChild(overlay);
         }
 
-        container.appendChild(thumbnailWrapper);
-    }
-}
+        return thumbnailWrapper;
+    });
 
-function navigateThumbnails(direction) {
+    thumbnails.forEach(thumbnail => container.appendChild(thumbnail));
+};
+
+const navigateThumbnails = (direction, state, setState, elements) => {
+    const { currentImageIndex, images } = state;
     const maxIndex = images.length - 5;
-    if (direction === -1 && currentImageIndex > 0) {
-        currentImageIndex -= 1;
-    } else if (direction === 1 && currentImageIndex < maxIndex) {
-        currentImageIndex += 1;
-    }
-    const thumbnailsContainer = document.querySelector('#thumbnail-bar div');
-    renderThumbnails(thumbnailsContainer); // Update thumbnails without recreating the container
-}
+    let newIndex = currentImageIndex;
 
-// Initialize the thumbnail bar with the current set of images
-updateButtonStyles()
+    if (direction === -1 && currentImageIndex > 0) {
+        newIndex -= 1;
+    } else if (direction === 1 && currentImageIndex < maxIndex) {
+        newIndex += 1;
+    }
+
+    setState({ ...state, currentImageIndex: newIndex });
+    const thumbnailsContainer = elements.thumbnailBar.querySelector('div');
+    renderThumbnails(thumbnailsContainer, { ...state, currentImageIndex: newIndex }, setState, elements);
+};
+
+// Initialize the application
+initializeApp();
