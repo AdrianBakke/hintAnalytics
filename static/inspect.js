@@ -264,4 +264,47 @@ function saveBoxCoordinates(x, y, width, height) {
     saveState(); // Save state after a new box is added
 }
 
+function scaleImageAndCanvas(scaleFactor) {
+    elements.img.style.transform = `scale(${scaleFactor})`;
+    elements.canvas.style.transform = `scale(${scaleFactor})`;
+    elements.container.style.height = `${elements.img.naturalHeight * scaleFactor}px`; // Adjust container height
+    elements.container.style.width = `${elements.img.naturalWidth * scaleFactor}px`; // Adjust container width
+}
+
+// Example of usage: scale image and canvas by 1.2 (20% larger)
+//scaleImageAndCanvas(0.8);
+
+
+// Load images for a specific collection
+async function loadCollectionImages() {
+    console.log("HELLO")
+    const res = await fetch(`/images/1`);
+    images = await res.json();
+    console.log(images)
+    displayedImages = 10; // Reset the number of displayed images
+    createThumbnailBar(images);
+}
+
+// Create the thumbnail bar for images
+function createThumbnailBar(images) {
+    const thumbnailBar = document.getElementById('thumbnail-bar');
+    thumbnailBar.style.display = 'flex';
+    thumbnailBar.style.overflowX = 'scroll';
+    thumbnailBar.style.height = '100px'; // Set desired thumbnail height
+    thumbnailBar.style.borderTop = '1px solid #ccc'; // Optional: add a border
+
+    images.forEach((img, index) => {
+        const thumbnail = document.createElement('img');
+        thumbnail.src = `/image/${img}`;
+        thumbnail.style.height = '100%'; // Maintain the height
+        thumbnail.style.cursor = 'pointer'; // Change cursor on hover
+        thumbnail.style.margin = '0 5px'; // Spacing between thumbnails
+        thumbnail.style.border = img === image ? '2px solid red' : ''; // Highlight active image
+        thumbnail.addEventListener('click', () => { window.location = `/inspect/${img}` });
+        thumbnailBar.appendChild(thumbnail);
+    });
+}
+
+
 updateButtonStyles()
+loadCollectionImages()

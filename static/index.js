@@ -16,30 +16,30 @@ async function loadCollections() {
 }
 
 // Create grid to display collections
-function createCollectionGrid() {
-    collectionGrid.innerHTML = collections.map((collection, index) => `
-        <div onclick="handleCollectionClick(${index})" class="collection-item">
+function createcollectiongrid() {
+    collectiongrid.innerhtml = collections.map((collection, index) => `
+        <div onclick="handlecollectionclick(${index})" class="collection-item">
             <img src="/image/${collection.cover_image}" alt="${collection.name}">
             <p>${collection.name}</p>
         </div>
     `).join('');
 }
 
-// Handle collection click and load images for the clicked collection
-async function handleCollectionClick(collectionIndex) {
-    currentCollectionIndex = collectionIndex; // Update the current collection index
-    await loadCollectionImages(collectionIndex); // Load images for the specific collection
+// handle collection click and load images for the clicked collection
+async function handlecollectionclick(collectionindex) {
+    currentcollectionindex = collectionindex;
+    await loadcollectionimages(collectionindex);
 }
 
-// Load images for a specific collection
-async function loadCollectionImages(collectionIndex) {
-    const collectionId = collections[collectionIndex].id;
+// load images for a specific collection
+async function loadcollectionimages(collectionindex) {
+    const collectionid = collections[collectionindex].id;
     console.log("called")
-    const res = await fetch(`/images/${collectionId}`);
+    const res = await fetch(`/images/${collectionid}`);
     images = await res.json();
-    displayedImages = 50; // Reset the number of displayed images
-    createThumbnailGrid();
-    setupSeeMoreButton();
+    displayedimages = 50; // reset the number of displayed images
+    createthumbnailgrid();
+    setupseemorebutton();
 }
 
 // Create the thumbnail grid for images

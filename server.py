@@ -7,7 +7,6 @@ from PIL import Image, ImageDraw
 from flask import Flask, render_template, request, send_file, jsonify, Response, abort
 from ultralytics import YOLO
 
-
 app = Flask(__name__)
 
 def get_db_connection():
@@ -62,6 +61,18 @@ def get_image(filename):
     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
     return send_file(image_full_path)
 
+# @app.route('/image_neightbors/<path:filename>')
+# def get_neigh_image(filename):
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+#     cursor.execute('SELECT image_full FROM images WHERE image_name = ?', (filename,))
+#     result = cursor.fetchone()
+#     if not result:
+#         return "Image not found", 404
+#     image_full_path = result['image_full']
+#     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
+#     return send_file(image_full_path)
+#
 
 @app.route('/label_classes/<path:filename>')
 def get_label_classes(filename):
@@ -89,8 +100,6 @@ def get_labels(filename):
         return jsonify([])
     labels = json.loads(result['labels'])
     return jsonify(labels)
-
-
 
 @app.route('/update_labels', methods=['POST'])
 def add_labels():
