@@ -304,6 +304,11 @@ const setState = (newState) => {
     state = newState;
 };
 
+const sortImages = (images) => {
+    // Assuming images are strings, sort them lexicographically
+    return images.sort((a, b) => a.localeCompare(b));
+};
+
 // Initialize Application
 const initializeApp = async () => {
     try {
@@ -333,9 +338,11 @@ const initializeApp = async () => {
             setImageAndCanvasSize(elements.img, elements.canvas, elements.container, dim.width, dim.height)();
         });
 
-        const images = await fetchImages(2);
+        let images = await fetchImages(2);
+        images = sortImages(images);
         const imageHasLabels = await fetchLabelStatus(images);
         setState({ ...state, images, imageHasLabels, currentImageIndex: images.indexOf(image) });
+
 
         createThumbnailBar(images, elements);
         updateButtonStyles(state, elements);
@@ -372,6 +379,9 @@ document.addEventListener('keydown', (e) => {
                 break;
             case 's':
                 elements.selectButton.click();
+                break;
+            case 'r':
+                elements.runModelButton.click();
                 break;
             default:
                 break;
