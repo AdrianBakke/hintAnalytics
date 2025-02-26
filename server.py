@@ -38,6 +38,7 @@ def get_image_collections():
         if id: row['cover_image'] = path[0]
         else: raise LookupError(f"could not find any images in root_dir with id {collection_id}")
     conn.close()
+    print(jsonify(res))
     return jsonify(res)
 
 @app.route('/image_id/<path:filename>')
@@ -51,27 +52,6 @@ def get_image_id(filename):
         return "Image not found", 404
     current_id = current['id']
     return jsonify(current_id)
-
-
-# @app.route('/image_neighbors/<path:filename>')
-# def get_image_neighbors(filename):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cursor.execute('SELECT id FROM images WHERE image_name = ?', (filename,))
-#     current = cursor.fetchone()
-#     if not current:
-#         return "Image not found", 404
-#     current_id = current['id']
-#     cursor.execute('SELECT image_name FROM images WHERE id < ? ORDER BY id DESC LIMIT 1', (current_id,))
-#     previous_image = cursor.fetchone()
-#     cursor.execute('SELECT image_name FROM images WHERE id > ? ORDER BY id ASC LIMIT 1', (current_id,))
-#     next_image = cursor.fetchone()
-#     neighbors = {
-#         'previous': previous_image['image_name'] if previous_image else None,
-#         'next': next_image['image_name'] if next_image else None
-#     }
-#     conn.close()
-#     return jsonify(neighbors)
 
 @app.route('/images/<int:collection_id>')
 def list_images(collection_id):
@@ -121,21 +101,33 @@ def get_labels(filename):
     labels = json.loads(result['labels'])
     return jsonify(labels)
 
-@app.route('/update_labels', methods=['POST'])
+@app.route('/update_labels', methods=['post'])
 def add_labels():
     data = request.get_json()
     if not isinstance(data, dict) or 'filename' not in data or 'labels' not in data:
-        return "Invalid input data", 400
+        return "invalid input data", 400
     filename = data['filename']
     labels = data['labels']
-    if not isinstance(labels, (list, dict)):
-        return "Invalid label data", 400
+    if not isinstance(labels, list):
+        return "invalid label data", 400
+
+    # remove duplicate labels based on 'class' and 'coordinates'
+    unique_labels = {}
+    for label in labels:
+        label_class = label.get('class')
+        coordinates = tuple(label.get('coordinates', []))
+        key = (label_class, coordinates)
+        if key not in unique_labels:
+            unique_labels[key] = label
+    print(f"adding {len(list(unique_labels.values()))} labels, duplicates: {len(labels)-len(list(unique_labels.values()))}")
+
+    labels = list(unique_labels.values())
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE images SET labels = ? WHERE image_name = ?', (json.dumps(labels), filename))
+    cursor.execute('update images set labels = ? where image_name = ?', (json.dumps(labels), filename))
     conn.commit()
     conn.close()
-    return jsonify({"status": "success", "message": "Labels added successfully"})
+    return jsonify({"status": "success", "message": "labels added successfully"})
 
 @app.route('/delete_labels/<path:filename>')
 def delete_labels(filename):
@@ -176,8 +168,8 @@ def video():
     return render_template('video.html')
 
 @app.route('/video/<path:filename>')
-def stream_video(fname):
-    video_path = os.path.join(VIDEO_PATH, fname)
+def stream_video(filename):
+    video_path = os.path.join(VIDEO_PATH, filename)
     if not os.path.exists(video_path):
         abort(404, description="Video file does not exist")
     return send_file(video_path, mimetype='video/mp4')
