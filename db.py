@@ -10,7 +10,7 @@ def convert_label_to_json(label_path):
         parts = line.strip().split()
         label_dict = {
             "class": int(parts[0]),
-            "coordinates": [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])]
+            "bbox": [float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4])]
         }
         label_list.append(label_dict)
     label_json = json.dumps(label_list)
@@ -31,8 +31,7 @@ def create_db(db_name='images.db'):
         CREATE TABLE IF NOT EXISTS images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             root_dir_id INTEGER,
-            image_full TEXT NOT NULL,
-            image_name TEXT NOT NULL,
+            file TEXT NOT NULL,
             labels JSON,
             FOREIGN KEY (root_dir_id) REFERENCES root_dirs(id)
         )
@@ -61,9 +60,9 @@ def populate_db_with_images(image_path, db_name='images.db'):
                 image_full = os.path.join(root, file)
                 image_name = file.rsplit('.', 1)[0]
                 cursor.execute('''
-                    INSERT OR IGNORE INTO images (root_dir_id, image_full, image_name) 
+                    INSERT OR IGNORE INTO images (root_dir_id, file) 
                     VALUES (?, ?, ?)
-                ''', (root_dir_id, image_full, image_name))
+                ''', (root_dir_id, file))
     conn.commit()
     conn.close()
 
