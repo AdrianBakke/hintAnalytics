@@ -175,6 +175,8 @@ def predict_image(filename):
         for b in p.boxes:
             for (_cls,_conf,_xyxy) in zip(b.cls.T.tolist(), b.conf.T.tolist(), b.xywhn.tolist()):
                 res.append({"class": _cls, "conf": _conf, "coordinates": _xyxy})
+    print("debug")
+    print(res)
     return jsonify(res)
 
 VIDEO_PATH = Path("/home/newton/repo/Football-Analysis-using-YOLO/output_videos")
