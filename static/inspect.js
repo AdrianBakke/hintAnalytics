@@ -193,6 +193,7 @@ const drawBoxes = (ctx, canvas, boxes, classColors, selectedBoxIndex, isPredicti
 };
 
 const drawAllBoxes = (ctx, canvas, state) => {
+    ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
     if (state.isLabeledShown) {
         drawBoxes(ctx, canvas, state.labels, state.classColors, state.selectedBoxIndex);
     }
@@ -224,21 +225,17 @@ const handleToggleLabelButtonClick = async (state) => {
                 newState.labels = fetchedLabels;
                 newState.isFetchedLabels = true;
             }
-            drawAllBoxes(ctx, elements.canvas, newState);
         } catch (error) {
             console.error(error);
         }
-    } else if (!newState.isLabeledShown) {
-        ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-        drawAllBoxes(ctx, elements.canvas, newState);
     }
+    drawAllBoxes(ctx, elements.canvas, newState);
     setState(saveState(newState, false));
     updateButtonStyles(newState, elements);
 };
 
 const handleTogglePredictionButtonClick = async (state) => {
     var newState = { ...state, isPredictionShown: !state.isPredictionShown };
-    console.log(newState)
     if (!state.isPredictDone) {
         try {
             const predictions = await fetchPredictions(state.image);
@@ -247,16 +244,15 @@ const handleTogglePredictionButtonClick = async (state) => {
                 predictions: predictions,
                 isPredictDone: true,
             };
-            drawBoxes(ctx, elements.canvas, newState.predictions, newState.classColors, newState.selectedBoxIndex, true);
+            //drawAllBoxes(ctx, elements.canvas, newState.predictions, newState.classColors, newState.selectedBoxIndex, true);
         } catch (error) {
             console.error(error);
         }
     }
-    else if (newState.isPredictionShown) {
-        drawBoxes(ctx, elements.canvas, newState.predictions, newState.classColors, newState.selectedPredictionIndex, true);
-    } else {
-        ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-    }
+    //else if (!newState.isPredictionShown) {
+    //    ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+    //}
+    drawAllBoxes(ctx, elements.canvas, newState);
     setState(saveState(newState, false));
     updateButtonStyles(newState, elements);
 };
