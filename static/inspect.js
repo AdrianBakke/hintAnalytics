@@ -229,6 +229,8 @@ const handleToggleLabelButtonClick = async (state) => {
         } catch (error) {
             console.error(error);
         }
+    } else {
+        newState.selectedLabelIndex = null;
     }
     drawAllBoxes(ctx, elements.canvas, newState);
     setState(saveState(newState, false));
@@ -245,14 +247,13 @@ const handleTogglePredictionButtonClick = async (state) => {
                 predictions: predictions,
                 isPredictDone: true,
             };
-            //drawAllBoxes(ctx, elements.canvas, newState.predictions, newState.classColors, newState.selectedBoxIndex, true);
         } catch (error) {
             console.error(error);
         }
     }
-    //else if (!newState.isPredictionShown) {
-    //    ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-    //}
+    if (!newState.isPredictionShown) {
+        newState.selectedPredictionIndex = null;
+    }
     drawAllBoxes(ctx, elements.canvas, newState);
     setState(saveState(newState, false));
     updateButtonStyles(newState, elements);
@@ -531,7 +532,7 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
             selectedPredictionIndex: selectedPredictionIndex
         });
 
-        if (selectedPredictionIndex !== -1) { // Updated condition
+        if (selectedPredictionIndex !== null) {
             const prediction = state.predictions[selectedPredictionIndex];
             const userConfirmed = await confirmAddPrediction(prediction);
             if (userConfirmed) {
@@ -559,7 +560,7 @@ elements.canvas.addEventListener('mouseup', (e) => {
         const newLabel = createNewLabel(state, endX, endY);
         setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }, true));
         drawAllBoxes(ctx, elements.canvas, state)
-        updateLabels(state.image, [...state.labels, newLabel]);
+        //updateLabels(state.image, [...state.labels, newLabel]);
     } else {
         // If the box is too small, cancel drawing
         setState({ ...state, isDrawing: false });
