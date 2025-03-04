@@ -56,7 +56,8 @@ const initialState = {
     isFetchedLabels: false,
     isPredictDone: false,
     selectedClass: null,
-    selectedBoxIndex: null,
+    selectedLabelIndex: null,
+    selectedPredictionIndex: null,
     classColors: {},
     classNames: {},
     images: [],
@@ -145,7 +146,8 @@ const undoLastAction = (state) => {
             ...state,
             labels: [...state.changeBuffer[newIndex]],
             currentStateIndex: newIndex,
-            selectedBoxIndex: null
+            selectedLabelIndex: null,
+            selectedPredictionIndex: null
         };
     }
     return state;
@@ -195,13 +197,12 @@ const drawBoxes = (ctx, canvas, boxes, classColors, selectedBoxIndex, isPredicti
 const drawAllBoxes = (ctx, canvas, state) => {
     ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
     if (state.isLabeledShown) {
-        drawBoxes(ctx, canvas, state.labels, state.classColors, state.selectedBoxIndex);
+        drawBoxes(ctx, canvas, state.labels, state.classColors, state.selectedLabelIndex);
     }
     if (state.isPredictionShown) {
-        drawBoxes(ctx, canvas, state.predictions, state.classColors, state.selectedBoxIndex, true);
+        drawBoxes(ctx, canvas, state.predictions, state.classColors, state.selectedPredictionIndex, true);
     }
 };
-
 
 // Update Class Legend
 const updateClassLegend = (classColors, classNames, legendContainer) => {
@@ -275,7 +276,8 @@ const handleDrawButtonClick = (state) => {
     const newState = {
         ...state,
         isDrawingMode: !state.isDrawingMode,
-        selectedBoxIndex: null
+        selectedLabelIndex: null,
+        selectedPredictionIndex: null
     };
     setState(newState);
     updateButtonStyles(newState, elements);
@@ -285,7 +287,8 @@ const handleSelectButtonClick = (state) => {
     const newState = {
         ...state,
         isDrawingMode: false,
-        selectedBoxIndex: null
+        selectedLabelIndex: null,
+        selectedPredictionIndex: null
     };
     setState(newState);
     updateButtonStyles(newState, elements);
@@ -403,15 +406,14 @@ elements.saveButton.addEventListener('click', () => handleSaveButtonClick(state)
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         setState(undoLastAction(state));
-        drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
-        drawBoxes(ctx, elements.canvas, state.predictions, state.classColors, state.selectedBoxIndex, true);
+        drawAllBoxes(ctx, elements.canvas, state)
     } else {
         switch (e.key) {
             case 'x':
-                if (state.selectedBoxIndex !== null) {
-                    const updatedLabels = state.labels.filter((_, idx) => idx !== state.selectedBoxIndex);
-                    setState({ ...state, labels: updatedLabels, selectedBoxIndex: null });
-                    drawBoxes(ctx, elements.canvas, updatedLabels, state.classColors, null);
+                if (state.selectedLabelIndex !== null) {
+                    const updatedLabels = state.labels.filter((_, idx) => idx !== state.selectedLabelIndex);
+                    setState({ ...state, labels: updatedLabels, selectedLabelIndex: null });
+                    drawAllBoxes(ctx, elements.canvas, state);
                 }
                 break;
             case 'd':
@@ -433,12 +435,19 @@ document.addEventListener('keydown', (e) => {
     updateButtonStyles(state, elements);
 });
 
-const addPredictionToLabels = (state, predictionIndex) => {
+const addPredictionToLabels = async (state, predictionIndex) => {
     const prediction = state.predictions[predictionIndex];
+
+    // TODO: avoid using state here?
+    if (!state.isFetchedLabels) {
+        const fetchedLabels = await fetchLabels(state.image);
+        state.labels = fetchedLabels;
+        state.isFetchedLabels = true;
+    }
     const newLabels = [...state.labels, prediction];
     setState(saveState({ ...state, labels: newLabels }, true));
-    updateLabels(state.image, newLabels);
-    drawBoxes(ctx, elements.canvas, newLabels, state.classColors, state.selectedBoxIndex);
+    //updateLabels(state.image, newLabels);
+    drawAllBoxes(ctx, elements.canvas, state)
 };
 
 const confirmAddPrediction = (prediction) => {
@@ -494,8 +503,10 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
     if (state.isDrawingMode) {
         setState({ ...state, isDrawing: true, startX: x, startY: y });
     } else {
+        var selectedLabelIndex = null;
+        var selectedPredictionIndex = null;
         if (state.isLabeledShown) {
-            const selectedIndex = state.labels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
+            selectedLabelIndex = state.labels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
                 const bx = (cx - w / 2) * elements.canvas.width;
                 const by = (cy - h / 2) * elements.canvas.height;
                 const bw = w * elements.canvas.width;
@@ -505,7 +516,7 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
         }
 
         if (state.isPredictionShown) {
-            const selectedPredictionIndex = state.predictions.findIndex(({ coordinates: [cx, cy, w, h] }) => {
+            selectedPredictionIndex = state.predictions.findIndex(({ coordinates: [cx, cy, w, h] }) => {
                 const bx = (cx - w / 2) * elements.canvas.width;
                 const by = (cy - h / 2) * elements.canvas.height;
                 const bw = w * elements.canvas.width;
@@ -516,8 +527,8 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
 
         setState({
             ...state,
-            selectedBoxIndex: selectedIndex !== -1 ? selectedIndex : null,
-            selectedPredictionIndex: selectedPredictionIndex !== -1 ? selectedPredictionIndex : null
+            selectedLabelIndex: selectedLabelIndex,
+            selectedPredictionIndex: selectedPredictionIndex
         });
 
         if (selectedPredictionIndex !== -1) { // Updated condition
@@ -527,8 +538,7 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
                 addPredictionToLabels(state, selectedPredictionIndex);
             }
         } else {
-            drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
-            drawBoxes(ctx, elements.canvas, state.predictions, state.classColors, state.selectedPredictionIndex, true);
+            drawAllBoxes(ctx, elements.canvas, state)
         }
     }
 });
@@ -548,12 +558,12 @@ elements.canvas.addEventListener('mouseup', (e) => {
     if (width >= MIN_BOX_WIDTH && height >= MIN_BOX_HEIGHT) {
         const newLabel = createNewLabel(state, endX, endY);
         setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }, true));
-        drawBoxes(ctx, elements.canvas, [...state.labels, newLabel], state.classColors, state.selectedBoxIndex);
+        drawAllBoxes(ctx, elements.canvas, state)
         updateLabels(state.image, [...state.labels, newLabel]);
     } else {
         // If the box is too small, cancel drawing
         setState({ ...state, isDrawing: false });
-        drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedBoxIndex);
+        drawAllBoxes(ctx, elements.canvas, state)
     }
 });
 
