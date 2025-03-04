@@ -25,6 +25,7 @@ const elements = {
     drawButton: getElement('draw-button'),
     selectButton: getElement('select-button'),
     runModelButton: getElement('run-model-button'),
+    saveButton: getElement('save-button'),
     classSelect: getElement('class-select'),
     imgszSelect: getElement('imgsz-select'),
     classLegend: getElement('class-legend'),
@@ -46,6 +47,9 @@ const initialState = {
     image: image, // To be set dynamically
     imageId: null,
     labels: [],
+    predictions: [],
+    showLabels: true,
+    showPredictions: true,
     changeBuffer: [],
     currentStateIndex: -1,
     isLabeledImageShown: false,
@@ -117,13 +121,14 @@ const updateLabels = async (image, labels) => {
 
 // Save State
 const saveState = (state, persistent) => {
-    const { image, labels, changeBuffer, currentStateIndex } = state;
+    const { labels, changeBuffer, currentStateIndex } = state;
     const newBuffer = currentStateIndex < changeBuffer.length - 1
         ? changeBuffer.slice(0, currentStateIndex + 1)
         : changeBuffer.slice();
     newBuffer.push([...labels]);
     if (persistent) {
-        updateLabels(state.image, labels)
+        // Only save labels, not predictions
+        updateLabels(state.image, labels);
     }
     return { ...state, changeBuffer: newBuffer, currentStateIndex: currentStateIndex + 1 };
 };
@@ -157,20 +162,40 @@ const updateButtonStyles = (state, elements) => {
 };
 
 // Draw Bounding Boxes
-const drawBoxes = (ctx, canvas, labels, classColors, selectedBoxIndex) => {
+const drawBoxes = (ctx, canvas, labels, predictions, classColors, selectedBoxIndex, showLabels, showPredictions) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    labels.forEach((label, index) => {
-        const [cx, cy, w, h] = label.coordinates;
-        const color = index === selectedBoxIndex ? '#0000ff' : classColors[label.class];
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(
-            (cx - w / 2) * canvas.width,
-            (cy - h / 2) * canvas.height,
-            w * canvas.width,
-            h * canvas.height
-        );
-    });
+
+    if (showLabels) {
+        labels.forEach((label, index) => {
+            const [cx, cy, w, h] = label.coordinates;
+            const color = index === selectedBoxIndex ? '#0000ff' : classColors[label.class];
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+                (cx - w / 2) * canvas.width,
+                (cy - h / 2) * canvas.height,
+                w * canvas.width,
+                h * canvas.height
+            );
+        });
+    }
+
+    if (showPredictions) {
+        predictions.forEach((pred, index) => {
+            const [cx, cy, w, h] = pred.coordinates;
+            const color = classColors[pred.class];
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]); // Dashed lines for predictions
+            ctx.strokeRect(
+                (cx - w / 2) * canvas.width,
+                (cy - h / 2) * canvas.height,
+                w * canvas.width,
+                h * canvas.height
+            );
+            ctx.setLineDash([]); // Reset line style
+        });
+    }
 };
 
 // Update Class Legend
@@ -232,18 +257,26 @@ const handleClassSelectChange = (state, event) => {
 };
 
 const handleRunModelButtonClick = async (state) => {
-    if (!state.isPredictDone || state.labels.length === 0) {
+    if (!state.isPredictDone || state.predictions.length === 0) {
         try {
             const predictions = await fetchPredictions(state.image);
-            const updatedLabels = [...state.labels, ...predictions];
             const newState = {
                 ...state,
-                labels: updatedLabels,
+                predictions: predictions,
                 isPredictDone: true
             };
-            setState(saveState(newState, true));
-            drawBoxes(ctx, elements.canvas, newState.labels, newState.classColors, newState.selectedBoxIndex);
-            updateButtonStyles();
+            setState(newState);
+            drawBoxes(
+                ctx,
+                elements.canvas,
+                newState.labels,
+                newState.predictions,
+                newState.classColors,
+                newState.selectedBoxIndex,
+                newState.showLabels,
+                newState.showPredictions
+            );
+            updateButtonStyles(newState, elements);
         } catch (error) {
             console.error(error);
         }
@@ -351,11 +384,21 @@ const initializeApp = async () => {
     }
 };
 
+const handleSaveLabels = async (state) => {
+    try {
+        await updateLabels(state.image, state.labels);
+        console.log("Labels saved successfully.");
+    } catch (error) {
+        console.error("Error saving labels:", error);
+    }
+};
+
 // Event Listener Handlers
 elements.toggleButton.addEventListener('click', () => handleToggleButtonClick(state));
 elements.drawButton.addEventListener('click', () => handleDrawButtonClick(state));
 elements.selectButton.addEventListener('click', () => handleSelectButtonClick(state));
 elements.runModelButton.addEventListener('click', () => handleRunModelButtonClick(state));
+elements.saveButton.addEventListener('click', () => handleSaveLabels(state));
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -368,7 +411,7 @@ document.addEventListener('keydown', (e) => {
                     const updatedLabels = state.labels.filter((_, idx) => idx !== state.selectedBoxIndex);
                     setState({ ...state, labels: updatedLabels, selectedBoxIndex: null });
                     drawBoxes(ctx, elements.canvas, updatedLabels, state.classColors, null);
-                    updateLabels(state.image, updatedLabels);
+                    //updateLabels(state.image, updatedLabels);
                 }
                 break;
             case 'd':
@@ -380,8 +423,16 @@ document.addEventListener('keydown', (e) => {
             case 's':
                 elements.selectButton.click();
                 break;
-            case 'r':
+            case 'l':
+                // Toggle Labels
+                setState({ ...state, showLabels: !state.showLabels });
+                handleToggleDisplay();
+                break;
+            case 'p':
+                // Toggle Predictions
                 elements.runModelButton.click();
+                setState({ ...state, showPredictions: !state.showPredictions });
+                handleToggleDisplay();
                 break;
             default:
                 break;
@@ -439,7 +490,7 @@ elements.canvas.addEventListener('mouseup', (e) => {
         const newLabel = createNewLabel(state, endX, endY);
         setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }, true));
         drawBoxes(ctx, elements.canvas, [...state.labels, newLabel], state.classColors, state.selectedBoxIndex);
-        updateLabels(state.image, [...state.labels, newLabel]);
+        //updateLabels(state.image, [...state.labels, newLabel]);
     } else {
         // If the box is too small, cancel drawing
         setState({ ...state, isDrawing: false });

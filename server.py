@@ -14,11 +14,6 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def get_model_predictions_connection():
-  conn = sqlite3.connect('model_predictions.db')
-  conn.row_factory = sqlite3.Row
-  return conn
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -70,19 +65,17 @@ def get_image_id(filename):
 @app.route('/images/<int:collection_id>')
 def list_images(collection_id):
   images_conn = get_db_connection()
-  preds_conn = get_model_predictions_connection()
   images_cursor = images_conn.cursor()
-  preds_cursor = preds_conn.cursor()
   images_cursor.execute('''
-      SELECT images.image_name, model_predictions.loss
-      FROM images
-      LEFT JOIN model_predictions ON images.image_name = model_predictions.filename
-      WHERE images.root_dir_id = ?
-      ORDER BY model_predictions.loss DESC
+    SELECT images.image_name, model_predictions.loss
+    FROM images
+    LEFT JOIN model_predictions 
+        ON images.image_name || '.jpg' LIKE model_predictions.file
+    WHERE images.root_dir_id = ?
+    ORDER BY model_predictions.loss DESC
   ''', (collection_id,))
   images = images_cursor.fetchall()
   images_conn.close()
-  preds_conn.close()
   return jsonify([{'image_name': row['image_name'], 'loss': row['loss']} for row in images])
 
 @app.route('/image/<path:filename>')
