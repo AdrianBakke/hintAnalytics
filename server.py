@@ -53,15 +53,6 @@ def get_image_id(filename):
     current_id = current['id']
     return jsonify(current_id)
 
-# @app.route('/images/<int:collection_id>')
-# def list_images(collection_id):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cursor.execute('SELECT image_name FROM images WHERE root_dir_id = ?', (collection_id,))
-#     images = cursor.fetchall()
-#     conn.close()
-#     return jsonify([row['image_name'] for row in images])
-
 @app.route('/images/<int:collection_id>')
 def list_images(collection_id):
   images_conn = get_db_connection()

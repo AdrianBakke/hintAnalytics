@@ -1,3 +1,4 @@
+// TODO: fix state to be 
 // Utility Functions
 const getElement = (id) => document.getElementById(id);
 const createElement = (tag, attributes = {}, ...children) => {
@@ -126,15 +127,12 @@ const updateLabels = async (image, labels) => {
 };
 
 // Save State
-const saveState = (state, persistent) => {
+const saveState = (state) => {
     const { image, labels, changeBuffer, currentStateIndex } = state;
     const newBuffer = currentStateIndex < changeBuffer.length - 1
         ? changeBuffer.slice(0, currentStateIndex + 1)
         : changeBuffer.slice();
     newBuffer.push([...labels]);
-    if (persistent) {
-        updateLabels(state.image, labels)
-    }
     return { ...state, changeBuffer: newBuffer, currentStateIndex: currentStateIndex + 1 };
 };
 
@@ -178,8 +176,6 @@ const drawBoxes = (ctx, canvas, boxes, classColors, selectedBoxIndex, isPredicti
         // Add dashed lines for predictions
         if (isPrediction) {
             ctx.setLineDash([5, 5]);
-        } else {
-            ctx.setLineDash([]);
         }
 
         ctx.strokeRect(
@@ -217,13 +213,13 @@ const updateClassLegend = (classColors, classNames, legendContainer) => {
 };
 
 // Event Handlers
-const handleToggleLabelButtonClick = async (state) => {
+const handleToggleLabelButtonClick = async () => {
     const newState = { ...state, isLabeledShown: !state.isLabeledShown };
     if (newState.isLabeledShown) {
         try {
             if (!newState.isFetchedLabels) {
                 const fetchedLabels = await fetchLabels(newState.image);
-                newState.labels = fetchedLabels;
+                newState.labels = [...state.labels, ...fetchedLabels];
                 newState.isFetchedLabels = true;
             }
         } catch (error) {
@@ -237,7 +233,7 @@ const handleToggleLabelButtonClick = async (state) => {
     updateButtonStyles(newState, elements);
 };
 
-const handleTogglePredictionButtonClick = async (state) => {
+const handleTogglePredictionButtonClick = async () => {
     var newState = { ...state, isPredictionShown: !state.isPredictionShown };
     if (!state.isPredictDone) {
         try {
@@ -259,21 +255,11 @@ const handleTogglePredictionButtonClick = async (state) => {
     updateButtonStyles(newState, elements);
 };
 
-// const handleToggleLabelButtonClick = (state) => {
-//     const newState = { ...state, isLabeledShown: !state.isLabeledShown };
-//     if (newState.isLabeledShown) {
-//         drawBoxes(ctx, elements.canvas, newState.labels, newState.classColors, newState.selectedBoxIndex);
-//     } else {
-//         ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-//     }
-//     setState(newState);
-//     updateButtonStyles(newState, elements);
-// };
-const handleSaveButtonClick = (state) => {
+const handleSaveButtonClick = () => {
     updateLabels(state.image, state.labels);
 }
 
-const handleDrawButtonClick = (state) => {
+const handleDrawButtonClick = () => {
     const newState = {
         ...state,
         isDrawingMode: !state.isDrawingMode,
@@ -284,7 +270,7 @@ const handleDrawButtonClick = (state) => {
     updateButtonStyles(newState, elements);
 };
 
-const handleSelectButtonClick = (state) => {
+const handleSelectButtonClick = () => {
     const newState = {
         ...state,
         isDrawingMode: false,
@@ -295,7 +281,7 @@ const handleSelectButtonClick = (state) => {
     updateButtonStyles(newState, elements);
 };
 
-const handleClassSelectChange = (state, event) => {
+const handleClassSelectChange = (event) => {
     const newState = { ...state, selectedClass: Number(event.target.value) };
     setState(newState);
 };
@@ -348,7 +334,6 @@ const fetchLabelStatus = async (images) => {
     }, {});
 };
 
-
 const sortImages = (images) => {
     // Assuming images are strings, sort them lexicographically
     return images.sort((a, b) => a.localeCompare(b));
@@ -368,7 +353,7 @@ const initializeApp = async () => {
 
         const { classColors, classNames } = configureClasses(classes);
         setState({ ...state, classColors, classNames });
-        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(state, e));
+        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(e));
 
         // Populate image size options
         imageSizes.forEach((dim, index) => {
@@ -383,11 +368,11 @@ const initializeApp = async () => {
             setImageAndCanvasSize(elements.img, elements.canvas, elements.container, dim.width, dim.height)();
         });
 
-        let images = await fetchImages(2);
+        let images = await fetchImages();
+
         // images = sortImages(images);
         const imageHasLabels = await fetchLabelStatus(images);
         setState({ ...state, images, imageHasLabels, currentImageIndex: images.indexOf(image) });
-
 
         createThumbnailBar(images, elements);
         updateButtonStyles(state, elements);
@@ -398,11 +383,11 @@ const initializeApp = async () => {
 
 
 // Event Listener Handlers
-elements.togglePButton.addEventListener('click', () => handleTogglePredictionButtonClick(state));
-elements.toggleLButton.addEventListener('click', () => handleToggleLabelButtonClick(state));
-elements.drawButton.addEventListener('click', () => handleDrawButtonClick(state));
-elements.selectButton.addEventListener('click', () => handleSelectButtonClick(state));
-elements.saveButton.addEventListener('click', () => handleSaveButtonClick(state));
+elements.togglePButton.addEventListener('click', () => handleTogglePredictionButtonClick());
+elements.toggleLButton.addEventListener('click', () => handleToggleLabelButtonClick());
+elements.drawButton.addEventListener('click', () => handleDrawButtonClick());
+elements.selectButton.addEventListener('click', () => handleSelectButtonClick());
+elements.saveButton.addEventListener('click', () => handleSaveButtonClick());
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -424,10 +409,10 @@ document.addEventListener('keydown', (e) => {
                 elements.selectButton.click();
                 break;
             case 'l':
-                handleToggleLabelButtonClick(state);
+                handleToggleLabelButtonClick();
                 break;
             case 'p':
-                handleTogglePredictionButtonClick(state);
+                handleTogglePredictionButtonClick();
                 break;
             default:
                 break;
@@ -437,18 +422,29 @@ document.addEventListener('keydown', (e) => {
 });
 
 const addPredictionToLabels = async (state, predictionIndex) => {
-    const prediction = state.predictions[predictionIndex];
+    if (state.predictions.length === 0) {
+        console.warn("No predictions available in the buffer.");
+        return;
+    }
+    const updatedPredictions = [...state.predictions];
 
-    // TODO: avoid using state here?
+    const [prediction] = updatedPredictions.splice(predictionIndex, 1);
+
+    // Update the state with the new predictions array
+    setState({ ...state, predictions: updatedPredictions });
+
     if (!state.isFetchedLabels) {
         const fetchedLabels = await fetchLabels(state.image);
-        state.labels = fetchedLabels;
-        state.isFetchedLabels = true;
+        setState({
+            ...state,
+            labels: fetchedLabels,
+            isFetchedLabels: true
+        });
     }
+
     const newLabels = [...state.labels, prediction];
-    setState(saveState({ ...state, labels: newLabels }, true));
-    //updateLabels(state.image, newLabels);
-    drawAllBoxes(ctx, elements.canvas, state)
+    setState(saveState({ ...state, labels: newLabels }));
+    drawAllBoxes(ctx, elements.canvas, state);
 };
 
 const confirmAddPrediction = (prediction) => {
@@ -496,7 +492,7 @@ const confirmAddPrediction = (prediction) => {
     });
 };
 
-elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
+elements.canvas.addEventListener('mousedown', async (e) => {
     const rect = elements.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -532,7 +528,8 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
             selectedPredictionIndex: selectedPredictionIndex
         });
 
-        if (selectedPredictionIndex !== null) {
+        //TODO: maybe filter out equals in labels and predictions so we have to exclusive buffers so we avoid overlaps
+        if (selectedPredictionIndex !== -1 && state.isPredictionShown) {
             const prediction = state.predictions[selectedPredictionIndex];
             const userConfirmed = await confirmAddPrediction(prediction);
             if (userConfirmed) {
@@ -544,8 +541,21 @@ elements.canvas.addEventListener('mousedown', async (e) => { // Changed to async
     }
 });
 
-const MIN_BOX_WIDTH = 10;
-const MIN_BOX_HEIGHT = 10;
+elements.canvas.addEventListener('mousemove', (e) => {
+    if (!state.isDrawing) return;
+    const rect = elements.canvas.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+
+    drawAllBoxes(ctx, elements.canvas, state);
+    ctx.strokeStyle = state.classColors[state.selectedClass];
+    ctx.lineWidth = 2;
+    ctx.strokeRect(state.startX, state.startY, currentX - state.startX, currentY - state.startY);
+    drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedLabelIndex);
+});
+
+const MIN_BOX_WIDTH = 3;
+const MIN_BOX_HEIGHT = 3;
 elements.canvas.addEventListener('mouseup', (e) => {
     if (!state.isDrawing) return;
     const rect = elements.canvas.getBoundingClientRect();
@@ -558,9 +568,11 @@ elements.canvas.addEventListener('mouseup', (e) => {
     // Check if the drawn box meets the minimum size requirements
     if (width >= MIN_BOX_WIDTH && height >= MIN_BOX_HEIGHT) {
         const newLabel = createNewLabel(state, endX, endY);
-        setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }, true));
-        drawAllBoxes(ctx, elements.canvas, state)
-        //updateLabels(state.image, [...state.labels, newLabel]);
+        console.log("SAVE BOX")
+        console.log(state)
+        setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }));
+        drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedLabelIndex);
+        console.log(state)
     } else {
         // If the box is too small, cancel drawing
         setState({ ...state, isDrawing: false });
