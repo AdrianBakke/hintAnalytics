@@ -26,18 +26,18 @@ function createCollectionGrid() {
     `).join('');
 }
 
-// handle collection click and load images for the clicked collection
+// Handle collection click and load images for the clicked collection
 async function handleCollectionClick(collectionIndex) {
     currentCollectionIndex = collectionIndex;
     await loadCollectionImages(collectionIndex);
 }
 
-// load images for a specific collection
+// Load images for a specific collection
 async function loadCollectionImages(collectionIndex) {
-    const collectionid = collections[collectionIndex].id;
-    const res = await fetch(`/images/${collectionid}`);
+    const collectionId = collections[collectionIndex].id;
+    const res = await fetch(`/images/${collectionId}`);
     images = await res.json();
-    displayedimages = 50; // reset the number of displayed images
+    displayedImages = 50; // Reset the number of displayed images
     createThumbnailGrid();
     setupSeeMoreButton();
 }
@@ -45,11 +45,13 @@ async function loadCollectionImages(collectionIndex) {
 // Create the thumbnail grid for images
 function createThumbnailGrid() {
     const imagesToDisplay = images.slice(0, displayedImages);
-    console.log("called")
     thumbnailGrid.innerHTML = imagesToDisplay.map((img, index) => `
-        <img src="/image/${img}" 
-             onclick="navigateToSingleView(${index})"
-             class="${index === currentCollectionIndex ? 'active' : ''}">
+        <div class="thumbnail-item">
+            <img src="/image/${img.image_name}" 
+                 onclick="navigateToSingleView(${index})"
+                 class="${index === currentCollectionIndex ? 'active' : ''}">
+            <div class="loss-value">${img.loss}</div>
+        </div>
     `).join('');
 }
 
@@ -69,8 +71,8 @@ function setupSeeMoreButton() {
 
 // Navigate to the single view for an image
 function navigateToSingleView(index) {
-    currentCollectionIndex = index ?? currentCollectionIndex;
-    window.location.href = `inspect/${images[currentCollectionIndex]}`;
+    const imageName = images[index].image_name;
+    window.location.href = `inspect/${imageName}`;
 }
 
 // Load initial collections
