@@ -126,6 +126,14 @@ const updateLabels = async (image, labels) => {
     }
 };
 
+const updateLabelClass = (labelIndex, newClass) => {
+    const updatedLabels = [...state.labels];
+    updatedLabels[labelIndex] = { ...updatedLabels[labelIndex], class: newClass };
+    const newState = { ...state, labels: updatedLabels };
+    setState(saveState(newState));
+    drawAllBoxes(ctx, elements.canvas, newState);
+};
+
 // Save State
 const saveState = (state) => {
     const { image, labels, changeBuffer, currentStateIndex } = state;
@@ -339,48 +347,6 @@ const sortImages = (images) => {
     return images.sort((a, b) => a.localeCompare(b));
 };
 
-// Initialize Application
-const initializeApp = async () => {
-    try {
-        const image = state.image; // Set this appropriately
-        elements.img.src = `/image/${image}`;
-
-        const [imageId, classes] = await Promise.all([
-            fetchImageId(image),
-            fetchClasses(image)
-        ]);
-        setState({ ...state, imageId });
-
-        const { classColors, classNames } = configureClasses(classes);
-        setState({ ...state, classColors, classNames });
-        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(e));
-
-        // Populate image size options
-        imageSizes.forEach((dim, index) => {
-            const option = createElement('option', { value: index }, `${dim.width}x${dim.height}`);
-            elements.imgszSelect.appendChild(option);
-        });
-        elements.imgszSelect.selectedIndex = 3;
-        setImageAndCanvasSize(elements.img, elements.canvas, elements.container, imageSizes[3].width, imageSizes[3].height)();
-
-        elements.imgszSelect.addEventListener('change', (e) => {
-            const dim = imageSizes[e.target.value];
-            setImageAndCanvasSize(elements.img, elements.canvas, elements.container, dim.width, dim.height)();
-        });
-
-        let images = await fetchImages();
-
-        // images = sortImages(images);
-        const imageHasLabels = await fetchLabelStatus(images);
-        setState({ ...state, images, imageHasLabels, currentImageIndex: images.indexOf(image) });
-
-        createThumbnailBar(images, elements);
-        updateButtonStyles(state, elements);
-    } catch (error) {
-        console.error(error);
-    }
-};
-
 
 // Event Listener Handlers
 elements.togglePButton.addEventListener('click', () => handleTogglePredictionButtonClick());
@@ -414,6 +380,15 @@ document.addEventListener('keydown', (e) => {
             case 'p':
                 handleTogglePredictionButtonClick();
                 break;
+
+            case 'c' || 'C':
+                if (state.selectedLabelIndex !== null && state.selectedLabelIndex !== -1) {
+                    // Optionally, position the popup at the center or relative to the selected label
+                    showClassSelectionPopup(window.innerWidth / 2, window.innerHeight / 2, state.selectedLabelIndex);
+                } else {
+                    alert('No label selected to change its class.');
+                }
+                break
             default:
                 break;
         }
@@ -492,6 +467,58 @@ const confirmAddPrediction = (prediction) => {
     });
 };
 
+const showClassSelectionPopup = (clientX, clientY, labelIndex) => {
+    // Create the overlay
+    const overlay = createElement('div', {
+        style: `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        `
+    });
+
+    // Create the popup container
+    const popup = createElement('div', {
+        style: `
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            min-width: 200px;
+        `
+    },
+        createElement('h3', {}, 'Select New Class'),
+        createElement('select', { id: 'class-select-popup', style: 'width: 100%; padding: 5px; margin-bottom: 10px;' },
+            ...Object.entries(state.classNames).map(([index, name]) =>
+                createElement('option', { value: index }, name)
+            )
+        ),
+        createElement('button', {
+            style: 'padding: 5px 10px; margin-right: 5px;',
+            onclick: () => {
+                const select = document.getElementById('class-select-popup');
+                const newClass = Number(select.value);
+                updateLabelClass(labelIndex, newClass);
+                document.body.removeChild(overlay);
+            }
+        }, 'OK'),
+        createElement('button', {
+            style: 'padding: 5px 10px;',
+            onclick: () => document.body.removeChild(overlay)
+        }, 'Cancel')
+    );
+
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+};
+
 elements.canvas.addEventListener('mousedown', async (e) => {
     const rect = elements.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -568,15 +595,36 @@ elements.canvas.addEventListener('mouseup', (e) => {
     // Check if the drawn box meets the minimum size requirements
     if (width >= MIN_BOX_WIDTH && height >= MIN_BOX_HEIGHT) {
         const newLabel = createNewLabel(state, endX, endY);
-        console.log("SAVE BOX")
-        console.log(state)
         setState(saveState({ ...state, labels: [...state.labels, newLabel], isDrawing: false }));
         drawBoxes(ctx, elements.canvas, state.labels, state.classColors, state.selectedLabelIndex);
-        console.log(state)
     } else {
         // If the box is too small, cancel drawing
         setState({ ...state, isDrawing: false });
         drawAllBoxes(ctx, elements.canvas, state)
+    }
+});
+
+elements.canvas.addEventListener('contextmenu', async (e) => {
+    if (state.isDrawingMode || state.selectedLabelIndex == -1) return;
+    e.preventDefault(); // Prevent the default context menu
+    const rect = elements.canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    let selectedLabelIndex = null;
+
+    if (state.isLabeledShown) {
+        selectedLabelIndex = state.labels.findIndex(({ coordinates: [cx, cy, w, h] }) => {
+            const bx = (cx - w / 2) * elements.canvas.width;
+            const by = (cy - h / 2) * elements.canvas.height;
+            const bw = w * elements.canvas.width;
+            const bh = h * elements.canvas.height;
+            return x >= bx && x <= bx + bw && y >= by && y <= by + bh;
+        });
+    }
+
+    if (selectedLabelIndex !== -1) {
+        showClassSelectionPopup(e.clientX, e.clientY, selectedLabelIndex);
     }
 });
 
@@ -619,31 +667,30 @@ const createThumbnailBar = (images, elements) => {
 const renderThumbnails = (container, elements) => {
     container.innerHTML = '';
     const { images, currentImageIndex, imageHasLabels, image } = state;
+    const startIndex = Math.min(currentImageIndex - 2, images.length);
+    //const endIndex = Math.min(currentImageIndex + 3, images.length);
     const endIndex = Math.min(currentImageIndex + 5, images.length);
+    console.log(currentImageIndex, endIndex)
     const thumbnails = images.slice(currentImageIndex, endIndex).map(img => {
         const thumbnailWrapper = createElement('div', { style: 'position: relative; display: inline-block;' });
-
         const thumbnail = createElement('img', {
-            src: `/image/${img}`,
+            src: `/image/${img.image_name}`,
             style: 'height: 90%; cursor: pointer; margin: 0 5px;',
-            border: img === image ? '2px solid red' : '',
+            border: img.image_name === image ? '2px solid red' : '',
             title: 'Click to inspect',
-            onclick: () => window.location = `/inspect/${img}`
+            onclick: () => window.location = `/inspect/${img.image_name}`
         });
-
         thumbnailWrapper.appendChild(thumbnail);
-
-        if (imageHasLabels[img]) {
+        if (imageHasLabels[img.image_name]) {
             const overlay = createElement('div', {
                 style: 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 255, 0, 0.3); pointer-events: none;',
                 title: 'This image has labels'
             });
             thumbnailWrapper.appendChild(overlay);
         }
-
         return thumbnailWrapper;
     });
-
+    console.log(thumbnails)
     thumbnails.forEach(thumbnail => container.appendChild(thumbnail));
 };
 
@@ -660,6 +707,48 @@ const navigateThumbnails = (direction, elements) => {
     const thumbnailsContainer = elements.thumbnailBar.querySelector('div');
     renderThumbnails(thumbnailsContainer, elements);
 };
+//
+// Initialize Application
+const initializeApp = async () => {
+    try {
+        const image = state.image; // Set this appropriately
+        elements.img.src = `/image/${image}`;
 
-// Initialize the application
+        const [imageId, classes] = await Promise.all([
+            fetchImageId(image),
+            fetchClasses(image)
+        ]);
+        setState({ ...state, imageId });
+
+        const { classColors, classNames } = configureClasses(classes);
+        setState({ ...state, classColors, classNames });
+        populateClassSelect(elements.classSelect, Object.entries(classes), (e) => handleClassSelectChange(e));
+
+        // Populate image size options
+        imageSizes.forEach((dim, index) => {
+            const option = createElement('option', { value: index }, `${dim.width}x${dim.height}`);
+            elements.imgszSelect.appendChild(option);
+        });
+        elements.imgszSelect.selectedIndex = 3;
+        setImageAndCanvasSize(elements.img, elements.canvas, elements.container, imageSizes[3].width, imageSizes[3].height)();
+
+        elements.imgszSelect.addEventListener('change', (e) => {
+            const dim = imageSizes[e.target.value];
+            setImageAndCanvasSize(elements.img, elements.canvas, elements.container, dim.width, dim.height)();
+        });
+
+        let images = await fetchImages();
+
+        // images = sortImages(images);
+        const imageNames = images.map(img => img.image_name);
+        const imageHasLabels = await fetchLabelStatus(imageNames);
+        setState({ ...state, images, imageHasLabels, currentImageIndex: imageNames.indexOf(image) });
+
+        createThumbnailBar(images, elements);
+        updateButtonStyles(state, elements);
+    } catch (error) {
+        console.error(error);
+    }
+};
+
 initializeApp();
