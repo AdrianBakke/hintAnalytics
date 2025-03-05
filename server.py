@@ -38,7 +38,6 @@ def get_image_collections():
         if id: row['cover_image'] = path[0]
         else: raise LookupError(f"could not find any images in root_dir with id {collection_id}")
     conn.close()
-    print(jsonify(res))
     return jsonify(res)
 
 @app.route('/image_id/<path:filename>')
@@ -80,6 +79,17 @@ def get_image(filename):
     image_full_path = result['image_full']
     assert os.path.exists(image_full_path), f"could not find {image_full_path}"
     return send_file(image_full_path)
+
+@app.route('/root_dir_id/<path:filename>')
+def get_root_dir_id(filename):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT root_dir_id FROM images WHERE image_name = ?', (filename,))
+    result = cursor.fetchone()
+    if not result:
+        return "root_dir_id not found", 404
+    root_dir_id = result['root_dir_id']
+    return jsonify(root_dir_id)
 
 @app.route('/label_classes/<path:filename>')
 def get_label_classes(filename):
@@ -166,8 +176,6 @@ def predict_image(filename):
         for b in p.boxes:
             for (_cls,_conf,_xyxy) in zip(b.cls.T.tolist(), b.conf.T.tolist(), b.xywhn.tolist()):
                 res.append({"class": _cls, "conf": _conf, "coordinates": _xyxy})
-    print("debug")
-    print(res)
     return jsonify(res)
 
 VIDEO_PATH = Path("/home/newton/repo/Football-Analysis-using-YOLO/output_videos")

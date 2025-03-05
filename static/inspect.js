@@ -320,8 +320,11 @@ const fetchClasses = async (image) => {
     return await res.json();
 };
 
-const fetchImages = async () => {
-    const res = await fetch(`/images/2`);
+const fetchImages = async (image) => {
+    const root_dir_id_res = await fetch(`/root_dir_id/${image}`);
+    if (!root_dir_id_res.ok) throw new Error("Failed to fetch root_dir_id");
+    const root_dir_id = await root_dir_id_res.json()
+    const res = await fetch(`/images/${Number(root_dir_id)}`);
     if (!res.ok) throw new Error("Failed to fetch images");
     return await res.json();
 };
@@ -346,7 +349,6 @@ const sortImages = (images) => {
     // Assuming images are strings, sort them lexicographically
     return images.sort((a, b) => a.localeCompare(b));
 };
-
 
 // Event Listener Handlers
 elements.togglePButton.addEventListener('click', () => handleTogglePredictionButtonClick());
@@ -670,7 +672,6 @@ const renderThumbnails = (container, elements) => {
     const startIndex = Math.min(currentImageIndex - 2, images.length);
     //const endIndex = Math.min(currentImageIndex + 3, images.length);
     const endIndex = Math.min(currentImageIndex + 5, images.length);
-    console.log(currentImageIndex, endIndex)
     const thumbnails = images.slice(currentImageIndex, endIndex).map(img => {
         const thumbnailWrapper = createElement('div', { style: 'position: relative; display: inline-block;' });
         const thumbnail = createElement('img', {
@@ -690,7 +691,6 @@ const renderThumbnails = (container, elements) => {
         }
         return thumbnailWrapper;
     });
-    console.log(thumbnails)
     thumbnails.forEach(thumbnail => container.appendChild(thumbnail));
 };
 
@@ -737,7 +737,7 @@ const initializeApp = async () => {
             setImageAndCanvasSize(elements.img, elements.canvas, elements.container, dim.width, dim.height)();
         });
 
-        let images = await fetchImages();
+        let images = await fetchImages(image);
 
         // images = sortImages(images);
         const imageNames = images.map(img => img.image_name);
