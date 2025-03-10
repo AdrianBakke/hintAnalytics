@@ -350,6 +350,7 @@ const sortImages = (images) => {
     return images.sort((a, b) => a.localeCompare(b));
 };
 
+
 // Event Listener Handlers
 elements.togglePButton.addEventListener('click', () => handleTogglePredictionButtonClick());
 elements.toggleLButton.addEventListener('click', () => handleToggleLabelButtonClick());

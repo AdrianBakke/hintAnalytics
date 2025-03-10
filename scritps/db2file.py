@@ -3,9 +3,19 @@ import json
 import os
 import random
 import shutil
+from pathlib import Path
 
+base_path = Path(__file__).parent.parent
 
-def export_labels_from_collection(collection_id, db_name='images.db', output_dir='data'):
+def get_collection_ids(db_name=base_path/'images.db'):
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM root_dirs')
+    rows = cursor.fetchall()
+    conn.close()
+    return list(set(int(x[0]) for x in rows))
+
+def export_labels_from_collection(collection_id, db_name=base_path/'images.db', output_dir='data'):
     # Define train and validation split ratio
     train_ratio = 0.8
 
@@ -63,6 +73,7 @@ def export_labels_from_collection(collection_id, db_name='images.db', output_dir
     export(train_data, train_labels_dir, train_images_dir)
     export(valid_data, valid_labels_dir, valid_images_dir)
 
-# Example usage
 if __name__ == "__main__":
-    export_labels_from_collection(collection_id=2)  # Replace with desired collection ID
+    for id in get_collection_ids():
+        export_labels_from_collection(collection_id=id)
+
