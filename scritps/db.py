@@ -86,7 +86,8 @@ def update_db_with_labels(label_path, db_name=base_path/'images.db'):
                 cursor.execute('''
                     UPDATE labels 
                     SET labels_json = ? 
-                    WHERE file = ? AND (labels_json IS NULL OR labels_json = ?)
+                    WHERE image_id = (SELECT id FROM images WHERE file = ?) 
+                      AND (labels_json IS NULL OR labels_json = ?)
                 ''', (label_json, file, json.dumps({})))
     conn.commit()
     conn.close()
@@ -147,8 +148,11 @@ def set_classes_for_rootdir(db_name=base_path/'images.db'):
     conn.close()
 
 if __name__ == "__main__":
+    print("create db...")
     create_db()
+    print("migrate labels...")
     migrate_labels()
+    print("remove labels column...")
     remove_labels_column()
 
     with open("paths.txt", "r") as f:
@@ -160,3 +164,4 @@ if __name__ == "__main__":
                 populate_db_with_images(p)
             elif t=="L":
                 update_db_with_labels(p)
+

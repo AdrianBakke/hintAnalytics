@@ -33,7 +33,7 @@ def get_image_collections():
     res = [dict(row) for row in collections] 
     for row in res:
         collection_id = row['id']
-        cursor.execute('SELECT image_name FROM images WHERE root_dir_id = ? LIMIT 1', (collection_id,))
+        cursor.execute('SELECT file FROM images WHERE root_dir_id = ? LIMIT 1', (collection_id,))
         path = cursor.fetchone()
         if id: row['cover_image'] = path[0]
         else: raise LookupError(f"could not find any images in root_dir with id {collection_id}")
@@ -45,7 +45,7 @@ def get_image_id(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
     # Fetch the current image and its order
-    cursor.execute('SELECT id FROM images WHERE image_name = ?', (filename,))
+    cursor.execute('SELECT id FROM images WHERE file = ?', (filename,))
     current = cursor.fetchone()
     if not current:
         return "Image not found", 404
@@ -56,35 +56,41 @@ def get_image_id(filename):
 def list_images(collection_id):
   images_conn = get_db_connection()
   images_cursor = images_conn.cursor()
+  # images_cursor.execute('''
+  #   SELECT images.file, model_predictions.loss
+  #   FROM images
+  #   LEFT JOIN model_predictions 
+  #       ON images.file LIKE model_predictions.file
+  #   WHERE images.root_dir_id = ?
+  #   ORDER BY model_predictions.loss DESC
+  # ''', (collection_id,))
   images_cursor.execute('''
-    SELECT images.image_name, model_predictions.loss
+    SELECT images.file
     FROM images
-    LEFT JOIN model_predictions 
-        ON images.image_name || '.jpg' LIKE model_predictions.file
     WHERE images.root_dir_id = ?
-    ORDER BY model_predictions.loss DESC
   ''', (collection_id,))
   images = images_cursor.fetchall()
   images_conn.close()
-  return jsonify([{'image_name': row['image_name'], 'loss': row['loss']} for row in images])
+  #return jsonify([{'file': row['file'], 'loss': row['loss']} for row in images])
+  return jsonify([{'file': row['file'], 'loss': 0} for row in images])
 
 @app.route('/image/<path:filename>')
 def get_image(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT image_full FROM images WHERE image_name = ?', (filename,))
+    cursor.execute('SELECT r.root_dir, i.file FROM root_dirs as r JOIN images as i on r.id = i.root_dir_id WHERE i.file = ?', (filename,))
     result = cursor.fetchone()
     if not result:
         return "Image not found", 404
-    image_full_path = result['image_full']
-    assert os.path.exists(image_full_path), f"could not find {image_full_path}"
+    image_full_path = Path(os.path.join(*result))
+    assert image_full_path.exists(), f"could not find {image_full_path}"
     return send_file(image_full_path)
 
 @app.route('/root_dir_id/<path:filename>')
 def get_root_dir_id(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT root_dir_id FROM images WHERE image_name = ?', (filename,))
+    cursor.execute('SELECT root_dir_id FROM images WHERE file = ?', (filename,))
     result = cursor.fetchone()
     if not result:
         return "root_dir_id not found", 404
@@ -99,7 +105,7 @@ def get_label_classes(filename):
         SELECT r.label_classes 
         FROM root_dirs AS r 
         JOIN images AS i ON r.id = i.root_dir_id 
-        WHERE i.image_name = ?
+        WHERE i.file = ?
     ''', (filename,))
     result = cursor.fetchone()
     if not result or not result['label_classes']:
@@ -111,7 +117,7 @@ def get_label_classes(filename):
 def get_labels(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT labels FROM images WHERE image_name = ?', (filename,))
+    cursor.execute('SELECT labels_json FROM labels WHERE image_id = (select id from images where file = ?)', (filename,))
     result = cursor.fetchone()
     if not result or not result['labels']:
         return jsonify([])
@@ -141,7 +147,7 @@ def add_labels():
     labels = list(unique_labels.values())
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('update images set labels = ? where image_name = ?', (json.dumps(labels), filename))
+    cursor.execute('UPDATE labels SET labels_json = ? WHERE image_id = (SELECT id FROM images WHERE file = ?)', (json.dumps(labels), filename))
     conn.commit()
     conn.close()
     return jsonify({"status": "success", "message": "labels added successfully"})
@@ -150,7 +156,7 @@ def add_labels():
 def delete_labels(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE images SET labels = ? WHERE image_name = ?', (json.dumps([]), filename))
+    cursor.execute('UPDATE labels SET labels_json = ? WHERE image_id = (SELECT id FROM images WHERE file = ?)', (json.dumps([]), filename))
     conn.commit()
     conn.close()
     return jsonify({"status": "success", "message": "Labels removed successfully"})
@@ -162,13 +168,13 @@ def predict_image(filename):
     model = YOLO(model_path)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT image_full FROM images WHERE image_name = ?', (filename,))
+    cursor.execute('SELECT r.root_dir, i.file FROM root_dirs as r JOIN images as i on r.id = i.root_dir_id WHERE i.file = ?', (filename,))
     result = cursor.fetchone()
     conn.close()
     if not result:
         return "Image not found", 404
-    image_full_path = result['image_full']
-    if not os.path.exists(image_full_path):
+    image_full_path = os.path.join(*result)
+    if not image_full_path.exists():
         return "Image file does not exist", 404
     preds = [p.boxes for p in model.predict(image_full_path)]
     res = []
