@@ -1,4 +1,3 @@
-// TODO: fix state to be 
 // Utility Functions
 const getElement = (id) => document.getElementById(id);
 const createElement = (tag, attributes = {}, ...children) => {
@@ -676,14 +675,14 @@ const renderThumbnails = (container, elements) => {
     const thumbnails = images.slice(currentImageIndex, endIndex).map(img => {
         const thumbnailWrapper = createElement('div', { style: 'position: relative; display: inline-block;' });
         const thumbnail = createElement('img', {
-            src: `/image/${img.image_name}`,
+            src: `/image/${img.file}`,
             style: 'height: 90%; cursor: pointer; margin: 0 5px;',
-            border: img.image_name === image ? '2px solid red' : '',
+            border: img.file === image ? '2px solid red' : '',
             title: 'Click to inspect',
-            onclick: () => window.location = `/inspect/${img.image_name}`
+            onclick: () => window.location = `/inspect/${img.file}`
         });
         thumbnailWrapper.appendChild(thumbnail);
-        if (imageHasLabels[img.image_name]) {
+        if (imageHasLabels[img.file]) {
             const overlay = createElement('div', {
                 style: 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 255, 0, 0.3); pointer-events: none;',
                 title: 'This image has labels'

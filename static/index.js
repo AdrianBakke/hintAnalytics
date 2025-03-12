@@ -47,7 +47,7 @@ function createThumbnailGrid() {
     const imagesToDisplay = images.slice(0, displayedImages);
     thumbnailGrid.innerHTML = imagesToDisplay.map((img, index) => `
         <div class="thumbnail-item">
-            <img src="/image/${img.image_name}" 
+            <img src="/image/${img.file}" 
                  onclick="navigateToSingleView(${index})"
                  class="${index === currentCollectionIndex ? 'active' : ''}">
             <div class="loss-value">${img.loss}</div>
@@ -71,7 +71,7 @@ function setupSeeMoreButton() {
 
 // Navigate to the single view for an image
 function navigateToSingleView(index) {
-    const imageName = images[index].image_name;
+    const imageName = images[index].file;
     window.location.href = `inspect/${imageName}`;
 }
 

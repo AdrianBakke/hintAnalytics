@@ -6,7 +6,7 @@ from ultralytics import YOLO
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 
-path: Path = Path(__file__).parent.parent
+p: Path = Path(__file__).parent.parent
 
 def create_db_connection(db_path: str) -> sqlite3.Connection:
     conn: sqlite3.Connection = sqlite3.connect(db_path)
@@ -132,9 +132,9 @@ def process_images(model: YOLO, model_name: str, input_dirs: List[str], conn: sq
 if __name__ == "__main__":
     model_name: str = "FEB28_N_1536_v5_T2_v1"
     model_path: str = f"/home/newton/repo/Football-Analysis-using-YOLO/runs/detect/{model_name}/weights/best.pt"
-    
+
     data_paths: List[str] = []
-    with open(path / "paths.txt") as f:
+    with open(p / "paths.txt") as f:
         lines: List[str] = f.read().splitlines()
         for line in lines:
             if not line.strip(): continue

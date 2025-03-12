@@ -54,28 +54,24 @@ def get_image_id(filename):
 
 @app.route('/images/<int:collection_id>')
 def list_images(collection_id):
-  images_conn = get_db_connection()
-  images_cursor = images_conn.cursor()
-  # images_cursor.execute('''
-  #   SELECT images.file, model_predictions.loss
-  #   FROM images
-  #   LEFT JOIN model_predictions 
-  #       ON images.file LIKE model_predictions.file
-  #   WHERE images.root_dir_id = ?
-  #   ORDER BY model_predictions.loss DESC
-  # ''', (collection_id,))
-  images_cursor.execute('''
-    SELECT images.file
-    FROM images
-    WHERE images.root_dir_id = ?
-  ''', (collection_id,))
-  images = images_cursor.fetchall()
-  images_conn.close()
-  #return jsonify([{'file': row['file'], 'loss': row['loss']} for row in images])
-  return jsonify([{'file': row['file'], 'loss': 0} for row in images])
+    images_conn = get_db_connection()
+    images_cursor = images_conn.cursor()
+    images_cursor.execute('''
+      SELECT i.file, mp.loss
+      FROM images as i
+      LEFT JOIN model_predictions as mp
+          ON i.file LIKE mp.file
+      WHERE i.root_dir_id = ?
+      ORDER BY mp.loss DESC
+    ''', (collection_id,))
+    images = images_cursor.fetchall()
+    images_conn.close()
+    return jsonify([{'file': row['file'], 'loss': row['loss']} for row in images])
 
 @app.route('/image/<path:filename>')
 def get_image(filename):
+    print("DEBUG")
+    print(filename)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT r.root_dir, i.file FROM root_dirs as r JOIN images as i on r.id = i.root_dir_id WHERE i.file = ?', (filename,))
@@ -147,7 +143,11 @@ def add_labels():
     labels = list(unique_labels.values())
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE labels SET labels_json = ? WHERE image_id = (SELECT id FROM images WHERE file = ?)', (json.dumps(labels), filename))
+    cursor.execute('''
+        UPDATE labels
+        SET labels_json = ?
+        WHERE image_id = (SELECT id FROM images WHERE file = ?)
+    ''', (json.dumps(labels), filename))
     conn.commit()
     conn.close()
     return jsonify({"status": "success", "message": "labels added successfully"})
@@ -156,7 +156,11 @@ def add_labels():
 def delete_labels(filename):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE labels SET labels_json = ? WHERE image_id = (SELECT id FROM images WHERE file = ?)', (json.dumps([]), filename))
+    cursor.execute('''
+        UPDATE labels
+        SET labels_json = ?
+        WHERE image_id = (SELECT id FROM images WHERE file = ?)
+    ''', (json.dumps([]), filename))
     conn.commit()
     conn.close()
     return jsonify({"status": "success", "message": "Labels removed successfully"})
@@ -168,7 +172,11 @@ def predict_image(filename):
     model = YOLO(model_path)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT r.root_dir, i.file FROM root_dirs as r JOIN images as i on r.id = i.root_dir_id WHERE i.file = ?', (filename,))
+    cursor.execute('''
+        SELECT r.root_dir, i.file
+        FROM root_dirs as r
+        JOIN images as i on r.id = i.root_dir_id WHERE i.file = ?
+    ''', (filename,))
     result = cursor.fetchone()
     conn.close()
     if not result:

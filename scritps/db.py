@@ -128,10 +128,10 @@ def remove_labels_column(db_name=base_path/'images.db'):
     ''')
 
     # Copy data from old images table to new images table
-    cursor.execute('''
-        INSERT INTO images_new (id, root_dir_id, file, revisions)
-        SELECT id, root_dir_id, image_name, revisions FROM images;
-    ''')
+    # cursor.execute('''
+    #     INSERT INTO images_new (id, root_dir_id, file, revisions)
+    #     SELECT id, root_dir_id, image_name, revisions FROM images;
+    # ''')
     cursor.execute('DROP TABLE images;')
     cursor.execute('ALTER TABLE images_new RENAME TO images;')
     cursor.execute('COMMIT;')
@@ -161,7 +161,9 @@ if __name__ == "__main__":
             if not line.strip(): continue
             t,p = line.split(" ")
             if t=="D":
+                print(f"populating db with data from {p}")
                 populate_db_with_images(p)
             elif t=="L":
+                print(f"populating db with labels from {p}")
                 update_db_with_labels(p)
 
