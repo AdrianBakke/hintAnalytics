@@ -115,9 +115,9 @@ def get_labels(filename):
     cursor = conn.cursor()
     cursor.execute('SELECT labels_json FROM labels WHERE image_id = (select id from images where file = ?)', (filename,))
     result = cursor.fetchone()
-    if not result or not result['labels']:
+    if not result or not result['labels_json']:
         return jsonify([])
-    labels = json.loads(result['labels'])
+    labels = json.loads(result['labels_json'])
     return jsonify(labels)
 
 @app.route('/update_labels', methods=['post'])
