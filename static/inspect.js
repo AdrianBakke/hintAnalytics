@@ -29,7 +29,8 @@ const elements = {
     classSelect: getElement('class-select'),
     imgszSelect: getElement('imgsz-select'),
     classLegend: getElement('class-legend'),
-    thumbnailBar: getElement('thumbnail-bar')
+    thumbnailBar: getElement('thumbnail-bar'),
+    thumbnailsButton: getElement('thumbnails-button')
 };
 
 const ctx = elements.canvas.getContext('2d');
@@ -293,6 +294,123 @@ const handleClassSelectChange = (event) => {
     setState(newState);
 };
 
+const openThumbnailFloatingWindow = async () => {
+    // Create the overlay
+    const overlay = createElement('div', {
+        id: 'thumbnail-overlay',
+        style: `
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              background: rgba(0, 0, 0, 0.8);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              z-index: 1000;
+          `
+    });
+
+    // Create the modal container
+    const modal = createElement('div', {
+        style: `
+              background: #fff;
+              padding: 20px;
+              border-radius: 8px;
+              max-width: 80%;
+              max-height: 80%;
+              overflow-y: auto;
+              position: relative;
+          `
+    });
+
+    // Create the close button
+    const closeButton = createElement('button', {
+        style: `
+              position: absolute;
+              top: 10px;
+              right: 10px;
+              background: #ff5c5c;
+              border: none;
+              border-radius: 50%;
+              width: 30px;
+              height: 30px;
+              cursor: pointer;
+              font-weight: bold;
+              color: white;
+          `,
+        onclick: () => document.body.removeChild(overlay)
+    }, '×');
+
+    // Create the thumbnail grid
+    const thumbnailGrid = createElement('div', {
+        style: `
+              display: flex;
+              flex-wrap: wrap;
+              gap: 10px;
+              justify-content: center;
+          `
+    });
+
+    // Fetch the current collection's images
+    try {
+        let images = await fetchImages(state.image);
+
+        // Populate the thumbnail grid
+        images.forEach(img => {
+            const thumbnailWrapper = createElement('div', { style: 'position: relative;' });
+            const thumbnail = createElement('img', {
+                src: `/image/${img.file}`,
+                alt: img.file,
+                style: 'width: 100px; height: 100px; object-fit: cover; cursor: pointer;',
+                onclick: () => window.location.href = `/inspect/${img.file}`
+            });
+            const lossOverlay = createElement('div', {
+                style: `
+                      position: absolute;
+                      bottom: 5px;
+                      left: 5px;
+                      background: rgba(0, 0, 0, 0.6);
+                      color: white;
+                      padding: 2px 5px;
+                      border-radius: 3px;
+                      font-size: 12px;
+                  `
+            }, `Loss: ${img.loss.toFixed(2)}`);
+
+            if (state.imageHasLabels[img.file]) {
+                const labelOverlay = createElement('div', {
+                    style: `
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background-color: rgba(0, 255, 0, 0.3);
+                        pointer-events: none;
+                    `,
+                    title: 'This image has labels'
+                });
+                thumbnailWrapper.appendChild(labelOverlay);
+            }
+
+            thumbnailWrapper.appendChild(thumbnail);
+            thumbnailWrapper.appendChild(lossOverlay);
+            thumbnailGrid.appendChild(thumbnailWrapper);
+        });
+    } catch (error) {
+        console.error("Error fetching collection images:", error);
+        const errorMsg = createElement('p', { style: 'color: red;' }, 'Failed to load thumbnails.');
+        thumbnailGrid.appendChild(errorMsg);
+    }
+
+    modal.appendChild(closeButton);
+    modal.appendChild(thumbnailGrid);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+};
+
 // Fetch Functions
 const fetchLabels = async (image) => {
     const res = await fetch(`/labels/${image}`);
@@ -355,6 +473,7 @@ elements.toggleLButton.addEventListener('click', () => handleToggleLabelButtonCl
 elements.drawButton.addEventListener('click', () => handleDrawButtonClick());
 elements.selectButton.addEventListener('click', () => handleSelectButtonClick());
 elements.saveButton.addEventListener('click', () => handleSaveButtonClick());
+elements.thumbnailsButton.addEventListener('click', () => openThumbnailFloatingWindow());
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -739,7 +858,7 @@ const initializeApp = async () => {
         let images = await fetchImages(image);
 
         // images = sortImages(images);
-        const imageNames = images.map(img => img.image_name);
+        const imageNames = images.map(img => img.file);
         const imageHasLabels = await fetchLabelStatus(imageNames);
         setState({ ...state, images, imageHasLabels, currentImageIndex: imageNames.indexOf(image) });
 
@@ -749,5 +868,7 @@ const initializeApp = async () => {
         console.error(error);
     }
 };
+
+
 
 initializeApp();

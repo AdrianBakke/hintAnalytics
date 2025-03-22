@@ -181,7 +181,8 @@ def predict_image(filename):
     conn.close()
     if not result:
         return "Image not found", 404
-    image_full_path = os.path.join(*result)
+    print([x for x in result])
+    image_full_path = Path(os.path.join(*result))
     if not image_full_path.exists():
         return "Image file does not exist", 404
     preds = [p.boxes for p in model.predict(image_full_path)]
